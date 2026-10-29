@@ -5,6 +5,7 @@ router = APIRouter(
     tags=["template"],
 )
 
+
 @router.get("/")
 async def get_template():
     return {}
