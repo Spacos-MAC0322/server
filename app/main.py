@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .api.error_handlers import register_error_handlers
 from .core.config import get_cors_origins
 from .core.database import connect_database
-from .routers import template
+from .routers import health, template
 
 
 @asynccontextmanager
@@ -32,4 +32,5 @@ app.add_middleware(
 
 register_error_handlers(app)
 
+app.include_router(health.router)
 app.include_router(template.router)
