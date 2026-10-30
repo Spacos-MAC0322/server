@@ -5,7 +5,7 @@ requires-python = ">=3.12"
 dependencies = [
     "fastapi",
     "uvicorn[standard]",
-    "motor",
+    "pymongo>=4.13,<5",
 ]
 
 [project.optional-dependencies]
@@ -26,6 +26,9 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["app*"]
+
+[tool.setuptools.package-data]
+"app.core" = ["mongodb_schema.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

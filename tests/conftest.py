@@ -4,6 +4,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from mongomock_motor import AsyncMongoMockClient, AsyncMongoMockDatabase
 
+from app.core.database import get_database
 from app.main import app
 
 
@@ -22,9 +23,11 @@ async def db(mongo_client: AsyncMongoMockClient) -> AsyncMongoMockDatabase:
 
 @pytest.fixture
 async def client(db: AsyncMongoMockDatabase) -> AsyncIterator[AsyncClient]:
-    # Once the app exposes a DB dependency, inject the mock here:
-    # app.dependency_overrides[get_database] = lambda: db
+    # ASGITransport does not run lifespan; unit tests use an isolated database.
+    app.dependency_overrides[get_database] = lambda: db
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        yield ac
-    app.dependency_overrides.clear()
+    try:
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            yield ac
+    finally:
+        app.dependency_overrides.clear()
