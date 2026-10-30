@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from .api.error_handlers import register_error_handlers
 from .core.config import get_cors_origins
 from .core.database import connect_database
 from .routers import template
@@ -28,5 +29,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
     allow_headers=["Content-Type", "Authorization"],
 )
+
+register_error_handlers(app)
 
 app.include_router(template.router)
