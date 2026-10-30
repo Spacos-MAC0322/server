@@ -42,11 +42,6 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 cd "$SERVER_DIR"
-export MONGODB_URI="${MONGODB_URI:-mongodb://localhost:27017}"
-export MONGODB_DB_NAME="${MONGODB_DB_NAME:-spacos}"
-export MONGODB_TEST_URI="${MONGODB_TEST_URI:-$MONGODB_URI}"
-API_HOST="${API_HOST:-127.0.0.1}"
-API_PORT="${API_PORT:-8000}"
 
 log '[1/5] Preparando o ambiente Python'
 if [[ -n "${PYTHON:-}" ]]; then
@@ -76,10 +71,16 @@ fi
     die 'O ambiente selecionado precisa de Python 3.12 ou superior.'
 
 if ! "$PYTHON_BIN" -c \
-    'import fastapi, uvicorn, pytest, pytest_asyncio, pytest_cov, httpx, mongomock_motor; from pymongo import AsyncMongoClient' \
+    'import fastapi, uvicorn, pytest, pytest_asyncio, pytest_cov, httpx, mongomock_motor, pydantic_settings; from pymongo import AsyncMongoClient' \
     >/dev/null 2>&1; then
     "$PYTHON_BIN" -m pip install -e '.[test]'
 fi
+
+# Read only non-secret values. Never source .env as executable shell code.
+STARTUP_CONFIG="$("$PYTHON_BIN" -m app.scripts.startup_config)" ||
+    die 'Configuracao invalida. Verifique as variaveis de ambiente e o arquivo .env.'
+STARTUP_CONFIG="${STARTUP_CONFIG//$'\r'/}"
+read -r API_HOST API_PORT DEFAULT_LOCAL_MONGO <<< "$STARTUP_CONFIG"
 
 if [[ "$CHECK_ONLY" == 0 ]]; then
     "$PYTHON_BIN" - "$API_HOST" "$API_PORT" <<'PY'
@@ -100,16 +101,19 @@ fi
 mongo_ping() {
     "$PYTHON_BIN" - "$1" <<'PY'
 import asyncio
-import os
 import sys
 
 from pymongo import AsyncMongoClient
 from pymongo.errors import PyMongoError
 
+from app.core.config import get_database_settings
+
 async def main():
     attempts = int(sys.argv[1])
+    settings = get_database_settings()
     async with AsyncMongoClient(
-        os.environ["MONGODB_URI"], serverSelectionTimeoutMS=1000, connectTimeoutMS=1000
+        settings.mongo_uri.get_secret_value(),
+        serverSelectionTimeoutMS=1000, connectTimeoutMS=1000
     ) as client:
         for attempt in range(attempts):
             try:
@@ -127,10 +131,8 @@ PY
 
 log '[2/5] Verificando e iniciando o MongoDB'
 if ! mongo_ping 1 >/dev/null 2>&1; then
-    case "${MONGODB_URI%/}" in
-        mongodb://localhost:27017|mongodb://127.0.0.1:27017) ;;
-        *) die 'A instancia configurada em MONGODB_URI nao esta acessivel. Verifique a conexao.' ;;
-    esac
+    [[ "$DEFAULT_LOCAL_MONGO" == 1 ]] ||
+        die 'A instancia configurada em MONGO_URI nao esta acessivel. Verifique a conexao.'
 
     case "$(uname -s)" in
         MINGW*|MSYS*|CYGWIN*)
@@ -156,7 +158,21 @@ log '[3/5] Aplicando colecoes, validadores e indices'
 "$PYTHON_BIN" -m app.scripts.init_db
 
 log '[4/5] Executando testes unitarios e de integracao'
-"$PYTHON_BIN" -m pytest
+"$PYTHON_BIN" - <<'PY'
+import os
+import subprocess
+import sys
+
+from app.core.config import get_database_settings
+
+settings = get_database_settings()
+uri = settings.mongodb_test_uri or settings.mongo_uri
+# A separate process measures coverage from the first application import.
+# Pass credentials through its environment without printing them.
+test_environment = os.environ.copy()
+test_environment["MONGODB_TEST_URI"] = uri.get_secret_value()
+raise SystemExit(subprocess.call([sys.executable, "-m", "pytest"], env=test_environment))
+PY
 
 if [[ "$CHECK_ONLY" == 1 ]]; then
     log 'Banco inicializado e testes aprovados. A API nao foi iniciada (--check).'

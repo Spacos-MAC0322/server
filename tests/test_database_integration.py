@@ -1,21 +1,25 @@
 """Opt-in checks against a real MongoDB, using an isolated temporary database."""
 
-import os
 from uuid import uuid4
 
 import pytest
 from pymongo import AsyncMongoClient
 from pymongo.errors import DuplicateKeyError, OperationFailure, WriteError
 
+from app.core.config import get_database_settings
 from app.core.database import COLLECTION_DEFINITIONS, initialize_database
+
+pytestmark = pytest.mark.integration
 
 
 @pytest.fixture
 async def real_db():
-    uri = os.environ.get("MONGODB_TEST_URI")
+    uri = get_database_settings().mongodb_test_uri
     if not uri:
         pytest.skip("Set MONGODB_TEST_URI to run real MongoDB integration tests")
-    async with AsyncMongoClient(uri, serverSelectionTimeoutMS=5000) as client:
+    async with AsyncMongoClient(
+        uri.get_secret_value(), serverSelectionTimeoutMS=5000
+    ) as client:
         name = f"spacos_test_{uuid4().hex}"
         assert name not in await client.list_database_names()
         try:

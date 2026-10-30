@@ -1,7 +1,6 @@
 """Async MongoDB connection, validators and indexes shared by API and CLI."""
 
 import json
-import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from importlib.resources import files
@@ -10,6 +9,8 @@ from fastapi import Request
 from pymongo import AsyncMongoClient
 from pymongo.asynchronous.database import AsyncDatabase
 from pymongo.errors import OperationFailure
+
+from .config import get_database_settings
 
 COLLECTION_DEFINITIONS = json.loads(
     files("app.core").joinpath("mongodb_schema.json").read_text(encoding="utf-8")
@@ -51,12 +52,13 @@ async def initialize_database(database: AsyncDatabase) -> None:
 @asynccontextmanager
 async def connect_database() -> AsyncIterator[AsyncDatabase]:
     """Open one client per application lifespan and close it even if startup fails."""
+    settings = get_database_settings()
     client = AsyncMongoClient(
-        os.environ.get("MONGODB_URI", "mongodb://localhost:27017"),
+        settings.mongo_uri.get_secret_value(),
         serverSelectionTimeoutMS=5000,
     )
     try:
-        database = client[os.environ.get("MONGODB_DB_NAME", "spacos")]
+        database = client[settings.mongodb_db_name]
         await database.command("ping")
         await initialize_database(database)
         yield database

@@ -40,8 +40,8 @@ As configurações podem ser fornecidas por variáveis de ambiente:
 MONGODB_DB_NAME=spacos_test API_PORT=8001 bash start.sh
 ```
 
-`MONGODB_URI` usa `mongodb://localhost:27017` por padrão. `MONGODB_TEST_URI` usa a
-mesma URI, e os testes criam/removem bancos temporários isolados; a conexão de
+`MONGO_URI` (ou o alias `MONGODB_URI`) usa `mongodb://localhost:27017` por padrão.
+No script, `MONGODB_TEST_URI` usa a mesma URI quando omitido, e os testes criam/removem bancos temporários isolados; a conexão de
 testes precisa permitir isso. Para uma instância remota indisponível, o script
 interrompe a execução sem tentar iniciar um MongoDB local. `PYTHON` permite
 selecionar outro executável Python já preparado, em vez da `.venv` local.
@@ -55,17 +55,59 @@ Na pasta `server`, instale as dependências:
 python -m pip install -e ".[test,lint]"
 ```
 
-Configure as variáveis de ambiente no terminal antes de iniciar a API ou o script:
+As configurações são carregadas e validadas com `pydantic-settings`. Não é
+necessário criar `.env` para manter o funcionamento local atual. Para configurar:
 
 ```powershell
-$env:MONGODB_URI = "mongodb://localhost:27017"
+Copy-Item .env.example .env
+```
+
+Edite o arquivo `.env` dentro de `server`, que é localizado pelo caminho do
+módulo, independentemente da pasta de execução. O arquivo real não é versionado;
+`.env.example` documenta as opções sem credenciais. Reinicie a API após alterações.
+Variáveis do terminal têm prioridade sobre `.env`; valores omitidos usam os padrões.
+O script `start.sh`, a API e os comandos do banco usam a mesma configuração.
+O `.env` é interpretado como dados, nunca executado como código de shell.
+
+| Variável | Padrão / regra |
+| --- | --- |
+| `MONGO_URI` | `mongodb://localhost:27017`; aceita `mongodb://` e `mongodb+srv://` |
+| `MONGODB_URI` | Alias de compatibilidade de `MONGO_URI` |
+| `MONGODB_DB_NAME` | `spacos`, independentemente do banco indicado na URI |
+| `MONGODB_TEST_URI` | Opcional; `start.sh` usa a conexão principal se omitida |
+| `API_HOST` / `API_PORT` | `127.0.0.1` / `8000`, utilizados por `start.sh` |
+| `CORS_ORIGINS` | Origens locais do Vite, separadas por vírgulas |
+| `EXTERNAL_API_TIMEOUT_SECONDS` | `10`, deve ser positivo e finito |
+| `AUTH_ENABLED` | `false`; quando verdadeiro, exige `JWT_SECRET` |
+| `JWT_SECRET` | Sem padrão; quando fornecido, pelo menos 32 caracteres não vazios |
+| `MAPAS_CULTURAIS_ENABLED` / `MAPAS_CULTURAIS_BASE_URL` | Desabilitado; ao habilitar, exige URL HTTP(S) |
+| `GEOSAMPA_ENABLED` / `GEOSAMPA_BASE_URL` | Desabilitado; ao habilitar, exige URL HTTP(S) |
+| `SPTRANS_ENABLED` / `SPTRANS_BASE_URL` / `SPTRANS_TOKEN` | Desabilitado; ao habilitar, exige URL e token |
+| `OPEN_METEO_ENABLED` / `OPEN_METEO_BASE_URL` | Desabilitado; URL padrão `https://api.open-meteo.com` |
+
+Se os dois nomes da conexão estiverem definidos na mesma fonte, `MONGO_URI`
+prevalece. Uma variável do terminal prevalece sobre o `.env` mesmo quando usa
+o alias antigo. Exemplo de configuração pelo terminal:
+
+```powershell
+$env:MONGO_URI = "mongodb://localhost:27017"
 $env:MONGODB_DB_NAME = "spacos"
 ```
 
-Esses também são os valores padrão quando as variáveis não estão definidas.
-Para Atlas ou autenticação, substitua `MONGODB_URI` pela URI da sua instância.
-`MONGODB_DB_NAME` seleciona o banco, independentemente do banco indicado na URI.
-Arquivos `.env` não são carregados automaticamente pelo script.
+Use credenciais reais somente no ambiente ou `.env` local. URI do MongoDB, segredo
+JWT e token SPTrans usam `SecretStr`, que mascara representações usuais, sem
+criptografar o arquivo. Não registre configurações nem seus valores secretos.
+Nunca publique esses segredos em variáveis `VITE_*` do frontend.
+Para gerar um segredo JWT localmente, pode-se usar
+`python -c "import secrets; print(secrets.token_urlsafe(32))"` e guardá-lo no `.env`.
+
+Esses campos preparam a configuração dos futuros módulos; não implementam login,
+proteção de rotas ou adaptadores. URLs de Mapas Culturais, GeoSampa e SPTrans
+ficam sem padrão até confirmar os endpoints efetivamente usados. Open-Meteo
+público não exige token para o uso previsto. Os comandos diretos do banco usam
+`DatabaseSettings` e não exigem JWT ou credenciais de integrações.
+A validação verifica formatos e pré-requisitos, sem realizar chamadas de rede.
+Os adaptadores poderão consultar `get_settings()` ao serem construídos.
 
 ## CORS: acesso pelo frontend
 
@@ -82,7 +124,7 @@ A variável substitui os padrões. Informe somente a origem (protocolo, endereç
 porta, quando houver), sem caminho nem barra final. Um valor vazio desabilita o
 acesso entre origens; `*` é rejeitado para manter as origens explícitas. As
 configurações são lidas ao carregar a aplicação: reinicie a API após alterá-las.
-Arquivos `.env` não são carregados automaticamente.
+O arquivo `server/.env` também pode fornecer `CORS_ORIGINS`.
 
 Os métodos permitidos são `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS` e
 `HEAD`. São aceitos os cabeçalhos `Content-Type` e `Authorization`, permitindo
@@ -163,7 +205,8 @@ python -m ruff check .
 
 Os testes usam banco em memória e clientes simulados, sem exigir um MongoDB ativo.
 Como o banco em memória não implementa os validadores do MongoDB, há também
-testes de integração opcionais contra uma instância real:
+testes de integração opcionais contra uma instância real. Os testes unitários isolam as configurações e não consomem
+credenciais do `.env` local:
 
 ```powershell
 $env:MONGODB_TEST_URI = "mongodb://localhost:27017"
@@ -173,5 +216,5 @@ python -m pytest
 Esses testes criam bancos temporários `spacos_test_<identificador>`, removidos ao
 final. Verificam as oito coleções, todos os validadores e índices, a preservação
 de dados em reexecuções, a rejeição de documentos inválidos e e-mails duplicados,
-e uma consulta geoespacial real. Sem `MONGODB_TEST_URI`, esses quatro testes são
+e uma consulta geoespacial real. Sem `MONGODB_TEST_URI` no ambiente ou `.env`, esses quatro testes são
 ignorados e a suíte em memória continua funcionando.
