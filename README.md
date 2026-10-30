@@ -67,6 +67,28 @@ Para Atlas ou autenticação, substitua `MONGODB_URI` pela URI da sua instância
 `MONGODB_DB_NAME` seleciona o banco, independentemente do banco indicado na URI.
 Arquivos `.env` não são carregados automaticamente pelo script.
 
+## CORS: acesso pelo frontend
+
+A API permite por padrão as origens `http://localhost:5173` e
+`http://127.0.0.1:5173`, para desenvolvimento com Vite. Para usar outra porta ou
+um frontend publicado, configure a lista completa, separada por vírgulas:
+
+```powershell
+$env:CORS_ORIGINS = "https://frontend.example.com,http://localhost:5173"
+python -m uvicorn app.main:app --reload
+```
+
+A variável substitui os padrões. Informe somente a origem (protocolo, endereço e
+porta, quando houver), sem caminho nem barra final. Um valor vazio desabilita o
+acesso entre origens; `*` é rejeitado para manter as origens explícitas. As
+configurações são lidas ao carregar a aplicação: reinicie a API após alterá-las.
+Arquivos `.env` não são carregados automaticamente.
+
+Os métodos permitidos são `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS` e
+`HEAD`. São aceitos os cabeçalhos `Content-Type` e `Authorization`, permitindo
+JSON e o futuro JWT enviado como `Authorization: Bearer ...`. O envio de cookies
+entre origens não está habilitado. CORS não substitui a autenticação das rotas.
+
 ## Inicialização do banco
 
 ```powershell
