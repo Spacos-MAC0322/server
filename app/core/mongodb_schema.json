@@ -1,0 +1,1149 @@
+{
+  "collections": {
+    "places": {
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": [
+            "_id",
+            "name",
+            "source_keys",
+            "sources"
+          ],
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "name": {
+              "bsonType": "string",
+              "minLength": 1
+            },
+            "type": {
+              "bsonType": [
+                "string",
+                "null"
+              ]
+            },
+            "categories": {
+              "bsonType": "array",
+              "items": {
+                "bsonType": "string"
+              }
+            },
+            "source_category": {
+              "bsonType": [
+                "string",
+                "null"
+              ]
+            },
+            "description": {
+              "bsonType": "object",
+              "properties": {
+                "short": {
+                  "bsonType": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "long": {
+                  "bsonType": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "address": {
+              "bsonType": "object",
+              "properties": {
+                "full": {
+                  "bsonType": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "postal_code": {
+                  "bsonType": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "neighborhood": {
+                  "bsonType": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "municipality": {
+                  "bsonType": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "location": {
+              "anyOf": [
+                {
+                  "bsonType": "object",
+                  "required": [
+                    "type",
+                    "coordinates"
+                  ],
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "Point"
+                      ]
+                    },
+                    "coordinates": {
+                      "bsonType": "array",
+                      "minItems": 2,
+                      "maxItems": 2,
+                      "items": {
+                        "bsonType": [
+                          "double",
+                          "int",
+                          "long",
+                          "decimal"
+                        ]
+                      }
+                    }
+                  }
+                },
+                {
+                  "bsonType": "null"
+                }
+              ]
+            },
+            "territory": {
+              "bsonType": "object",
+              "properties": {
+                "district": {
+                  "bsonType": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "subprefecture": {
+                  "bsonType": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "region": {
+                  "bsonType": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "administration": {
+              "bsonType": "object",
+              "properties": {
+                "level": {
+                  "bsonType": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "contacts": {
+              "bsonType": "object",
+              "properties": {
+                "phone": {
+                  "bsonType": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "website": {
+                  "bsonType": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "public_access": {
+              "bsonType": [
+                "bool",
+                "null"
+              ]
+            },
+            "source_public_flag": {
+              "bsonType": [
+                "bool",
+                "null"
+              ]
+            },
+            "source_status": {
+              "bsonType": [
+                "int",
+                "long",
+                "null"
+              ]
+            },
+            "publication_status": {
+              "enum": [
+                "review",
+                "published",
+                "hidden",
+                "archived"
+              ]
+            },
+            "opening_hours": {
+              "bsonType": "object",
+              "properties": {
+                "text": {
+                  "bsonType": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "verified": {
+                  "bsonType": "bool"
+                }
+              }
+            },
+            "admission": {
+              "bsonType": "object",
+              "properties": {
+                "is_free": {
+                  "bsonType": [
+                    "bool",
+                    "null"
+                  ]
+                },
+                "price_min": {
+                  "bsonType": [
+                    "double",
+                    "int",
+                    "long",
+                    "decimal",
+                    "null"
+                  ]
+                },
+                "price_max": {
+                  "bsonType": [
+                    "double",
+                    "int",
+                    "long",
+                    "decimal",
+                    "null"
+                  ]
+                },
+                "price_text": {
+                  "bsonType": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "currency": {
+                  "bsonType": "string"
+                }
+              }
+            },
+            "accessibility": {
+              "bsonType": "object",
+              "properties": {
+                "declared": {
+                  "bsonType": [
+                    "bool",
+                    "null"
+                  ]
+                },
+                "physical_features": {
+                  "bsonType": "array",
+                  "items": {
+                    "bsonType": "string"
+                  }
+                },
+                "wheelchair": {
+                  "bsonType": [
+                    "bool",
+                    "null"
+                  ]
+                },
+                "adapted_restroom": {
+                  "bsonType": [
+                    "bool",
+                    "null"
+                  ]
+                },
+                "notes": {
+                  "bsonType": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "visit_duration_minutes": {
+              "bsonType": [
+                "int",
+                "long",
+                "null"
+              ]
+            },
+            "source_keys": {
+              "bsonType": "array",
+              "minItems": 1,
+              "items": {
+                "bsonType": "string"
+              }
+            },
+            "sources": {
+              "bsonType": "array",
+              "minItems": 1,
+              "items": {
+                "bsonType": "object",
+                "required": [
+                  "provider",
+                  "external_id"
+                ],
+                "properties": {
+                  "provider": {
+                    "bsonType": "string"
+                  },
+                  "external_id": {
+                    "bsonType": "string"
+                  },
+                  "layer": {
+                    "bsonType": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "updated_at": {
+                    "bsonType": [
+                      "date",
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "record_url": {
+                    "bsonType": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            },
+            "data_quality": {
+              "bsonType": "object",
+              "properties": {
+                "location_valid": {
+                  "bsonType": "bool"
+                },
+                "location_method": {
+                  "bsonType": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "needs_review": {
+                  "bsonType": "bool"
+                },
+                "detail_level": {
+                  "enum": [
+                    "partial",
+                    "full",
+                    "curated"
+                  ]
+                },
+                "municipality_check": {
+                  "bsonType": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "stale_source": {
+                  "bsonType": "bool"
+                }
+              }
+            }
+          }
+        }
+      },
+      "validationLevel": "strict",
+      "validationAction": "error",
+      "indexes": [
+        {
+          "key": [
+            [
+              "location",
+              "2dsphere"
+            ]
+          ],
+          "name": "location_2dsphere"
+        },
+        {
+          "key": [
+            [
+              "source_keys",
+              1
+            ]
+          ],
+          "unique": true,
+          "name": "source_keys_unique"
+        },
+        {
+          "key": [
+            [
+              "publication_status",
+              1
+            ],
+            [
+              "categories",
+              1
+            ],
+            [
+              "territory.district",
+              1
+            ]
+          ],
+          "name": "map_filter"
+        },
+        {
+          "key": [
+            [
+              "address.municipality",
+              1
+            ]
+          ],
+          "name": "municipality"
+        }
+      ]
+    },
+    "events": {
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": [
+            "_id",
+            "title",
+            "source_keys",
+            "sources"
+          ],
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "title": {
+              "bsonType": "string",
+              "minLength": 1
+            },
+            "source_type": {
+              "bsonType": [
+                "string",
+                "null"
+              ]
+            },
+            "source_status": {
+              "bsonType": [
+                "int",
+                "long",
+                "null"
+              ]
+            },
+            "description": {
+              "bsonType": "object",
+              "properties": {
+                "short": {
+                  "bsonType": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "long": {
+                  "bsonType": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "categories": {
+              "bsonType": "array",
+              "items": {
+                "bsonType": "string"
+              }
+            },
+            "age_rating": {
+              "bsonType": [
+                "string",
+                "null"
+              ]
+            },
+            "price_text": {
+              "bsonType": [
+                "string",
+                "null"
+              ]
+            },
+            "sign_language": {
+              "bsonType": [
+                "bool",
+                "null"
+              ]
+            },
+            "audio_description": {
+              "bsonType": [
+                "bool",
+                "null"
+              ]
+            },
+            "publication_status": {
+              "enum": [
+                "review",
+                "published",
+                "hidden",
+                "archived"
+              ]
+            },
+            "occurrences": {
+              "bsonType": "array",
+              "items": {
+                "bsonType": "object",
+                "properties": {
+                  "external_id": {
+                    "bsonType": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "place_id": {
+                    "bsonType": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "source_place_id": {
+                    "bsonType": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "schedule_text": {
+                    "bsonType": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "rule": {
+                    "bsonType": [
+                      "object",
+                      "null"
+                    ]
+                  },
+                  "price_text": {
+                    "bsonType": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "starts_at": {
+                    "bsonType": [
+                      "date",
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "ends_at": {
+                    "bsonType": [
+                      "date",
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            },
+            "source_keys": {
+              "bsonType": "array",
+              "minItems": 1,
+              "items": {
+                "bsonType": "string"
+              }
+            },
+            "sources": {
+              "bsonType": "array",
+              "minItems": 1,
+              "items": {
+                "bsonType": "object",
+                "required": [
+                  "provider",
+                  "external_id"
+                ],
+                "properties": {
+                  "provider": {
+                    "bsonType": "string"
+                  },
+                  "external_id": {
+                    "bsonType": "string"
+                  },
+                  "layer": {
+                    "bsonType": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "updated_at": {
+                    "bsonType": [
+                      "date",
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "record_url": {
+                    "bsonType": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            },
+            "data_quality": {
+              "bsonType": "object",
+              "properties": {
+                "detail_level": {
+                  "enum": [
+                    "partial",
+                    "full",
+                    "curated"
+                  ]
+                },
+                "schedulable": {
+                  "bsonType": "bool"
+                },
+                "schedule_status": {
+                  "enum": [
+                    "missing_occurrences",
+                    "unverified_rule",
+                    "confirmed"
+                  ]
+                },
+                "stale_source": {
+                  "bsonType": "bool"
+                }
+              }
+            }
+          }
+        }
+      },
+      "validationLevel": "strict",
+      "validationAction": "error",
+      "indexes": [
+        {
+          "key": [
+            [
+              "source_keys",
+              1
+            ]
+          ],
+          "unique": true,
+          "name": "event_source_keys_unique"
+        },
+        {
+          "key": [
+            [
+              "publication_status",
+              1
+            ],
+            [
+              "data_quality.schedulable",
+              1
+            ]
+          ],
+          "name": "event_visibility"
+        },
+        {
+          "key": [
+            [
+              "occurrences.place_id",
+              1
+            ]
+          ],
+          "name": "occurrences_place"
+        }
+      ]
+    },
+    "territories": {
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": [
+            "_id",
+            "kind",
+            "name",
+            "geometry",
+            "sources"
+          ],
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "kind": {
+              "enum": [
+                "district",
+                "subprefecture"
+              ]
+            },
+            "name": {
+              "bsonType": "string"
+            },
+            "region": {
+              "bsonType": [
+                "string",
+                "null"
+              ]
+            },
+            "geometry": {
+              "bsonType": "object",
+              "required": [
+                "type",
+                "coordinates"
+              ],
+              "properties": {
+                "type": {
+                  "enum": [
+                    "Polygon",
+                    "MultiPolygon"
+                  ]
+                },
+                "coordinates": {
+                  "bsonType": "array"
+                }
+              }
+            },
+            "sources": {
+              "bsonType": "array",
+              "minItems": 1,
+              "items": {
+                "bsonType": "object",
+                "required": [
+                  "provider",
+                  "external_id"
+                ],
+                "properties": {
+                  "provider": {
+                    "bsonType": "string"
+                  },
+                  "external_id": {
+                    "bsonType": "string"
+                  },
+                  "layer": {
+                    "bsonType": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "updated_at": {
+                    "bsonType": [
+                      "date",
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "record_url": {
+                    "bsonType": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "validationLevel": "strict",
+      "validationAction": "error",
+      "indexes": [
+        {
+          "key": [
+            [
+              "geometry",
+              "2dsphere"
+            ]
+          ],
+          "name": "territories_geospatial"
+        },
+        {
+          "key": [
+            [
+              "kind",
+              1
+            ],
+            [
+              "name",
+              1
+            ]
+          ],
+          "name": "territory_lookup"
+        }
+      ]
+    },
+    "place_curations": {
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": [
+            "_id",
+            "place_id"
+          ],
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "place_id": {
+              "bsonType": "string"
+            },
+            "pet_friendly": {
+              "bsonType": [
+                "bool",
+                "null"
+              ]
+            },
+            "family_friendly": {
+              "bsonType": [
+                "bool",
+                "null"
+              ]
+            },
+            "lgbtqia_inclusion": {
+              "bsonType": [
+                "bool",
+                "null"
+              ]
+            },
+            "hidden_gem": {
+              "bsonType": [
+                "bool",
+                "null"
+              ]
+            },
+            "accessibility_notes": {
+              "bsonType": [
+                "string",
+                "null"
+              ]
+            },
+            "opening_hours_notes": {
+              "bsonType": [
+                "string",
+                "null"
+              ]
+            },
+            "evidence": {
+              "bsonType": "array",
+              "items": {
+                "bsonType": "object"
+              }
+            },
+            "reviewed_at": {
+              "bsonType": [
+                "date",
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      },
+      "validationLevel": "strict",
+      "validationAction": "error",
+      "indexes": [
+        {
+          "key": [
+            [
+              "place_id",
+              1
+            ]
+          ],
+          "unique": true,
+          "name": "place_id_unique"
+        }
+      ]
+    },
+    "sync_runs": {
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": [
+            "_id",
+            "provider",
+            "started_at",
+            "status"
+          ],
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "provider": {
+              "bsonType": "string"
+            },
+            "started_at": {
+              "bsonType": [
+                "date",
+                "string",
+                "null"
+              ]
+            },
+            "finished_at": {
+              "bsonType": [
+                "date",
+                "string",
+                "null"
+              ]
+            },
+            "status": {
+              "enum": [
+                "running",
+                "success",
+                "partial",
+                "error"
+              ]
+            },
+            "imported": {
+              "bsonType": [
+                "int",
+                "long"
+              ]
+            },
+            "errors": {
+              "bsonType": "array",
+              "items": {
+                "bsonType": "string"
+              }
+            }
+          }
+        }
+      },
+      "validationLevel": "strict",
+      "validationAction": "error",
+      "indexes": [
+        {
+          "key": [
+            [
+              "provider",
+              1
+            ],
+            [
+              "started_at",
+              -1
+            ]
+          ],
+          "name": "sync_history"
+        }
+      ]
+    },
+    "users": {
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": [
+            "_id",
+            "email",
+            "password_hash"
+          ],
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "name": {
+              "bsonType": [
+                "string",
+                "null"
+              ]
+            },
+            "email": {
+              "bsonType": "string"
+            },
+            "password_hash": {
+              "bsonType": "string"
+            },
+            "preferences": {
+              "bsonType": "object"
+            },
+            "created_at": {
+              "bsonType": [
+                "date",
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      },
+      "validationLevel": "strict",
+      "validationAction": "error",
+      "indexes": [
+        {
+          "key": [
+            [
+              "email",
+              1
+            ]
+          ],
+          "unique": true,
+          "name": "email_unique"
+        }
+      ]
+    },
+    "itineraries": {
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": [
+            "_id",
+            "user_id",
+            "title",
+            "stops"
+          ],
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "user_id": {
+              "bsonType": "string"
+            },
+            "title": {
+              "bsonType": "string"
+            },
+            "date": {
+              "bsonType": [
+                "string",
+                "null"
+              ]
+            },
+            "preferences": {
+              "bsonType": "object"
+            },
+            "stops": {
+              "bsonType": "array",
+              "items": {
+                "bsonType": "object",
+                "required": [
+                  "place_id",
+                  "order"
+                ],
+                "properties": {
+                  "place_id": {
+                    "bsonType": "string"
+                  },
+                  "order": {
+                    "bsonType": "int"
+                  },
+                  "arrival_time": {
+                    "bsonType": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "departure_time": {
+                    "bsonType": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "event_id": {
+                    "bsonType": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            },
+            "created_at": {
+              "bsonType": [
+                "date",
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      },
+      "validationLevel": "strict",
+      "validationAction": "error",
+      "indexes": [
+        {
+          "key": [
+            [
+              "user_id",
+              1
+            ],
+            [
+              "date",
+              1
+            ]
+          ],
+          "name": "user_date"
+        }
+      ]
+    },
+    "user_places": {
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": [
+            "_id",
+            "user_id",
+            "place_id",
+            "is_favorite",
+            "is_visited"
+          ],
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "user_id": {
+              "bsonType": "string"
+            },
+            "place_id": {
+              "bsonType": "string"
+            },
+            "is_favorite": {
+              "bsonType": "bool"
+            },
+            "is_visited": {
+              "bsonType": "bool"
+            },
+            "visited_at": {
+              "bsonType": [
+                "date",
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      },
+      "validationLevel": "strict",
+      "validationAction": "error",
+      "indexes": [
+        {
+          "key": [
+            [
+              "user_id",
+              1
+            ],
+            [
+              "place_id",
+              1
+            ]
+          ],
+          "unique": true,
+          "name": "user_place_unique"
+        }
+      ]
+    }
+  }
+}
