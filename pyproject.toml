@@ -6,6 +6,9 @@ dependencies = [
     "fastapi",
     "uvicorn[standard]",
     "pymongo>=4.13,<5",
+    "httpx",
+    "tenacity>=9.2.1,<10",
+    "cachetools>=7.2,<8",
 ]
 
 [project.optional-dependencies]
@@ -13,7 +16,6 @@ test = [
     "pytest",
     "pytest-asyncio",
     "pytest-cov",
-    "httpx",
     "mongomock-motor",
 ]
 lint = [
