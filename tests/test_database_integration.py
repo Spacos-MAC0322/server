@@ -12,9 +12,45 @@ from app.core.config import Settings, get_database_settings
 from app.core.database import COLLECTION_DEFINITIONS, initialize_database
 from app.integrations.mapas_culturais import MapasCulturaisClient, normalize_space
 from app.jobs import sync_places as job
+from app.schemas.place import PlaceDetailSchema, PlaceSummarySchema
 from app.services.sync_spaces import sync_spaces
 
 pytestmark = pytest.mark.integration
+
+
+async def test_read_schemas_project_real_persisted_place_and_curation(real_db):
+    await initialize_database(real_db)
+    place = normalize_space(
+        {
+            "id": 21,
+            "name": "Museu de consulta",
+            "status": 1,
+            "En_Municipio": "São Paulo",
+            "location": {"longitude": "-46.63", "latitude": "-23.55"},
+        },
+        "https://saas.mapas.cultura.gov.br",
+    )
+    await sync_spaces(real_db, spaces=[place])
+    await real_db.place_curations.insert_one(
+        {
+            "_id": "curation-21",
+            "place_id": place["_id"],
+            "pet_friendly": True,
+            "family_friendly": False,
+            "reviewed_at": "2026-11-03",
+        }
+    )
+    stored = await real_db.places.find_one({"_id": place["_id"]})
+    curation = await real_db.place_curations.find_one({"place_id": place["_id"]})
+    for cls in (PlaceSummarySchema, PlaceDetailSchema):
+        result = cls.from_mongo(stored, curation=curation)
+        payload = result.model_dump(mode="json", by_alias=True)
+        assert payload["id"] == place["_id"]
+        assert payload["location"]["coordinates"] == [-46.63, -23.55]
+        assert payload["badges"]["pet_friendly"] is True
+        assert payload["badges"]["family_friendly"] is False
+        assert payload["badges"]["is_free"] is None
+        assert "_id" not in payload
 
 
 async def test_places_job_consumes_adapter_with_shared_mongo_schema(

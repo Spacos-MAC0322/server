@@ -269,6 +269,52 @@ O cliente é fechado ao encerrar a aplicação.
 As rotas podem receber o banco com `Depends(get_database)`, importando
 `get_database` de `app.core.database`.
 
+## Modelos de consulta de espaços
+
+`app/schemas/place.py` define os modelos Pydantic de resposta para o frontend.
+O contrato de escrita continua em `app/core/mongodb_schema.json`; esses modelos
+projetam documentos persistidos sem modificar o banco ou o pipeline de importação.
+
+| Modelo | Conteúdo |
+| --- | --- |
+| `GeoPoint` | GeoJSON `Point`, com coordenadas `[longitude, latitude]`, finitas e dentro dos limites geográficos |
+| `PlaceSummarySchema` | `id`, `name`, `primary_category`, `location` e `badges` |
+| `PlaceDetailSchema` | Resumo mais categorias, descrições, endereço, território, administração, contatos, horário, preço, acessibilidade, duração da visita, fontes, qualidade e curadoria |
+
+Os nomes seguem o backend existente. `_id` é aceito na leitura, mas a resposta
+sempre usa `id`, inclusive com a serialização padrão de `response_model` do FastAPI.
+A categoria principal é a primeira categoria preenchida em `categories`, com
+fallback para `type` e `source_category`. Localização ausente permanece `null`.
+Valores BSON `Decimal128` de coordenadas e preços são convertidos para números JSON.
+
+As badges são um objeto com `is_free`, `wheelchair`, `pet_friendly`,
+`family_friendly`, `lgbtqia_inclusion` e `hidden_gem`. Cada campo preserva os três
+estados: `true` (informação afirmativa), `false` (negativa) e `null` (desconhecida).
+O frontend pode exibir um selo quando o valor for `true`; campos ausentes nunca
+implicam gratuidade ou inclusão. A declaração genérica de acessibilidade não é
+transformada automaticamente em acesso para cadeira de rodas.
+
+```python
+from app.schemas.place import PlaceDetailSchema, PlaceSummarySchema
+
+# document vem de places; curation vem de place_curations, quando consultada.
+summary = PlaceSummarySchema.from_mongo(document, curation=curation)
+detail = PlaceDetailSchema.from_mongo(document, curation=curation)
+payload = detail.model_dump(mode="json")
+```
+
+Também é possível usar `PlaceSummarySchema.model_validate(document)` diretamente.
+`from_mongo` permite fornecer a curadoria separada e verifica seu `place_id`.
+Os modelos não consultam o banco. Sem curadoria consultada, suas badges ficam
+desconhecidas. Informações desconhecidas de horário e preço continuam nulas.
+`source_keys`, flags brutas do provedor, estado de publicação e evidências livres
+da curadoria não são incluídos nas respostas. As fontes e avisos de qualidade
+úteis para consulta aparecem no detalhe.
+
+Esses modelos não criam endpoints nem filtram a publicação. As futuras rotas
+devem selecionar os espaços visíveis e consultar `place_curations` quando
+necessário, antes de construir a resposta.
+
 ## Verificação
 
 ```powershell
