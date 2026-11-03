@@ -504,6 +504,17 @@ python -m pytest -m 'not integration'
 python -m pytest -m integration --cov-append
 ```
 
+O job usa temporariamente `ubuntu-22.04` (kernel 6.8 na imagem consultada em
+03/11/2026). O MongoDB 8.0 impede a inicialização nos kernels 6.19 a 7.0.13;
+isso faz o serviço falhar antes de qualquer teste. O runner `ubuntu-24.04`
+consultado usa kernel 7.0.0 e aciona essa restrição. A troca do runner preserva
+a versão do banco e a execução obrigatória da integração. Rever essa escolha
+quando o runner mais recente tiver um kernel reconhecido como compatível pelo
+MongoDB, observando também o calendário de descontinuação do Ubuntu 22.04.
+Referências: [MongoDB](https://www.mongodb.com/docs/manual/release-notes/8.0/),
+[runner Ubuntu 22.04](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2204-Readme.md)
+e [runner Ubuntu 24.04](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md).
+
 A segunda etapa soma a cobertura de integração à de unitários. As chamadas ao
 Mapas Culturais nos testes são simuladas, sem depender da disponibilidade da API
 nem de tokens. Não são necessárias credenciais para o MongoDB temporário da CI.

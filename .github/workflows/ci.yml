@@ -11,7 +11,9 @@ permissions:
 jobs:
   tests:
     name: Tests (Python ${{ matrix.python-version }})
-    runs-on: ubuntu-24.04
+    # Temporary: MongoDB 8.0 rejects kernels 6.19 through 7.0.13.
+    # The ubuntu-22.04 runner currently uses kernel 6.8 (SERVER-121912).
+    runs-on: ubuntu-22.04
     timeout-minutes: 15
     strategy:
       fail-fast: false
