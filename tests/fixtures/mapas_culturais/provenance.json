@@ -1,0 +1,11 @@
+{
+  "source_url": "https://saas.mapas.cultura.gov.br",
+  "captured_at": "2026-11-03T15:43:02.543721+00:00",
+  "snapshot_sha256": "4c75899614cbe8e2eb520aadb33c6c425d6f7bdba8c851bc2f428bf6cf61f95b",
+  "ids": [
+    1,
+    65,
+    109
+  ],
+  "note": "Unmodified records selected for location/hours missingness regression tests."
+}

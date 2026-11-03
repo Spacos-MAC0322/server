@@ -1,0 +1,95 @@
+[
+  {
+    "id": 1,
+    "name": "INTERCÂMBIO CULTURAL CHILE BRASIL",
+    "shortDescription": "INTEGRAÇÃO DAS CULTURAS DOS POVOS   DA AMÉRICA DO SÚL ,INCENTIVANDO O DESARROLHO DA CULTURA DE BASE LOCAL REGIONAL E INTERNACIONAL,  DESCENTRALISANDO OS RECURSOS PÚBLICOS DA CULTURA SEREM USADOS EM CONSTRUIR CENTROS CULTURAES EM CADA SUBPREFITURA OU COMUNIDADE S CARENTES EM DONDE ATE HOJE NÃO EXISTE UM PONTO DE CULTURA, voluntariado grátis 100% ,queremos somente colaborar com a falta de CULTURA.",
+    "longDescription": "UM CENTRO DE INTERCÂMBIO CULTURAL ENTRE CHILE -BRASIL, FUI ENVIADO COMO (REPRESENTANTE)CULTURAL DE MI IXªREGIÃO DE LA ARAUCANIA  ,CIDADE DE TEMUCO, DOMDE O POETA PABLO NERUDA COMENÇA ESCREVER  É HOJE NOIS TRABALHAMOS POR RESGATAR A CASA DOMDE VIVIO NERUDA EM TEMUCO  ,,COM ESTA FORÇA DOS CREDITOS OBTIDO DURANTE MAIS DE 35 ANOS DE COLABORAÇÃO A ARTE E CULTURA POPULAR DE AMBOS POVOS  BRASIL E CHILE, NESTA TRILHA ABERTA ENTRE VINICIO,JORGE AMADO ,THIAGO DE MELLLO , SEM OUTRA FINALIDADE QUE OUTROS DEM CONTINUIDADE MESMO SEM SERMOS BEM  INTERPRETADOS COMO OBREIROS CULTURAES ,,   DE FORMA IMDEPENDENTE SEM MENDIGAR FAVORES POLITICOS OU RELIGIOSOS, MANTEMOS ESTE PONTO DA CULTURA VIVO,, E RENUNCIADO A SER DEPENDENTES DOS RECURSOS CULTURAES DESTE OU OUTROS MINISTERIOS,,  ONG, VOLUNTARIA 100% GRATIS",
+    "location": {
+      "latitude": "-23.5401862012892",
+      "longitude": "-46.7034816741943"
+    },
+    "public": false,
+    "updateTimestamp": {
+      "date": "2018-09-12 12:09:01.000000",
+      "timezone_type": 3,
+      "timezone": "America/Sao_Paulo"
+    },
+    "status": 1,
+    "En_Bairro": "Vila Romana",
+    "endereco": "Rua Cerro Corá 645, Vila Romana, SÃO PAULO, SP",
+    "En_Municipio": "SÃO PAULO",
+    "type": {
+      "id": 125,
+      "name": "Ponto de Cultura"
+    },
+    "En_CEP": null,
+    "telefonePublico": null,
+    "site": null,
+    "horario": null,
+    "preco": null,
+    "acessibilidade": null,
+    "acessibilidade_fisica": null
+  },
+  {
+    "id": 65,
+    "name": "A Cultura Lúdica e a Formação do Brincante",
+    "shortDescription": "Sediado no Laboratório de Brinquedos e Materiais Pedagógicos da Faculdade de Educação da USP, oferece cursos, palestras, assessoria presencial e a distância sobre a cultura lúdica e educação. Oferece ainda tenda de jogos étnicos e multiculturais para crianças, jovens, adultos e idosos, acervo bibliográfico e publicações.",
+    "longDescription": "O Pontão de Cultura: A Cultura Lúdica e a formação do Brincante foi instituído em 2010 e realiza ações no Brasil oferecendo cursos,  orientações presenciais e a distância , bibliografia,   pesquisa e publicações sobre o lúdico na educação e na cultura. Oferece ainda tenda de jogos clássicos, étnicos e multiculturais para um público variado. É um centro de referência sobre o tema no Brasil e disponibiliza  acesso e informação para todo o país  por meio do website e in loco com um Laboratório e Museu da Educação e do Brinquedo.",
+    "location": {
+      "latitude": "-23.5636207",
+      "longitude": "-46.7161658"
+    },
+    "public": false,
+    "updateTimestamp": {
+      "date": "2017-05-25 23:11:54.000000",
+      "timezone_type": 3,
+      "timezone": "America/Sao_Paulo"
+    },
+    "status": 1,
+    "En_Bairro": "Butantã",
+    "endereco": "Avenida da Universidade, 308 bl.B sala 55, CIDADE UNIVERSITARIA, Butantã, 05508040, São Paulo, SP",
+    "acessibilidade": "Sim",
+    "horario": "segunda à sexta - 9h ás 18h",
+    "site": "http://www.labrimp.fe.usp.br",
+    "telefonePublico": "(11) 3091-2080",
+    "En_CEP": "05508040",
+    "En_Municipio": "São Paulo",
+    "type": {
+      "id": 125,
+      "name": "Ponto de Cultura"
+    },
+    "preco": null,
+    "acessibilidade_fisica": null
+  },
+  {
+    "id": 109,
+    "name": "Bosque da Leitura Parque do Ibirapuera",
+    "shortDescription": null,
+    "longDescription": null,
+    "location": {
+      "latitude": "-22.046183",
+      "longitude": "-47.888915"
+    },
+    "public": false,
+    "updateTimestamp": {
+      "date": "2017-05-25 23:12:10.000000",
+      "timezone_type": 3,
+      "timezone": "America/Sao_Paulo"
+    },
+    "status": 1,
+    "telefonePublico": "(11) 3675-8096",
+    "En_CEP": "13572-081",
+    "En_Bairro": "Parque Ibirapuera",
+    "En_Municipio": "São Paulo",
+    "endereco": "Avenida República do Líbano, 1151, portão 7, Parque Ibirapuera, 13572-081, São Paulo, SP",
+    "type": {
+      "id": 20,
+      "name": "Biblioteca Pública"
+    },
+    "site": null,
+    "horario": null,
+    "preco": null,
+    "acessibilidade": null,
+    "acessibilidade_fisica": null
+  }
+]
