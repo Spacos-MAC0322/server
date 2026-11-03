@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .api.error_handlers import register_error_handlers
-from .api.routers import places
+from .api.routers import itineraries, places
 from .core.config import get_cors_origins
 from .core.database import connect_database
 from .core.http_client import create_http_client, register_exception_handlers
@@ -40,3 +40,4 @@ register_error_handlers(app)
 app.include_router(health.router)
 app.include_router(template.router)
 app.include_router(places.router)
+app.include_router(itineraries.router)
