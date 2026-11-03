@@ -402,6 +402,48 @@ python -m pytest
 python -m ruff check .
 ```
 
+A cobertura mínima da suíte completa continua em 80%. Para executar somente
+os testes solicitados, sem aplicar o limite global de cobertura a um recorte:
+
+```powershell
+python -m pytest tests/unit/test_place_service.py --no-cov
+$env:MONGODB_TEST_URI = "mongodb://localhost:27017"
+python -m pytest tests/integration/test_places_api.py --no-cov
+```
+
+`tests/unit/test_place_service.py` usa mocks do repositório para validar o
+serviço (visibilidade, bbox, badges e falhas) e `httpx.MockTransport` para
+verificar a normalização da resposta externa. Os testes anteriores do adaptador,
+incluindo paginação, coordenadas inválidas e respostas com erro, continuam em
+`tests/test_mapas_culturais.py`.
+
+`tests/integration/test_places_api.py` exercita o endpoint com MongoDB real,
+validadores e índice geográfico: listagem, bounding box, ausência de resultados,
+visibilidade, curadoria e o fluxo adaptador simulado → sincronização → banco →
+resposta pública. Os testes HTTP em memória de validação 422 e falha 503 continuam
+em `tests/test_places_api.py`. Testes existentes foram reaproveitados e movidos,
+sem manter cópias das mesmas funções em dois lugares.
+
+### CI do backend
+
+O workflow `.github/workflows/ci.yml` pertence ao repositório `server` (submódulo
+do projeto principal). Em pushes, pull requests ou execução manual, prepara Python
+3.12 e 3.13 e um serviço MongoDB 8.0 temporário, instala `.[test,lint]`, executa
+Ruff e roda a suíte em duas etapas:
+
+```bash
+python -m pytest -m 'not integration'
+python -m pytest -m integration --cov-append
+```
+
+A segunda etapa soma a cobertura de integração à de unitários. As chamadas ao
+Mapas Culturais nos testes são simuladas, sem depender da disponibilidade da API
+nem de tokens. Não são necessárias credenciais para o MongoDB temporário da CI.
+O contêiner é criado por job conforme o
+[mecanismo de serviços do GitHub Actions](https://docs.github.com/en/actions/tutorials/use-containerized-services/use-docker-service-containers).
+No ambiente `CI=true`, a ausência de `MONGODB_TEST_URI` faz os testes de integração
+falharem, impedindo que a esteira passe com essa cobertura ignorada.
+
 Os testes usam banco em memória e clientes simulados, sem exigir um MongoDB ativo.
 Como o banco em memória não implementa os validadores do MongoDB, há também
 testes de integração opcionais contra uma instância real. Os testes unitários isolam as configurações e não consomem
@@ -415,5 +457,7 @@ python -m pytest
 Esses testes criam bancos temporários `spacos_test_<identificador>`, removidos ao
 final. Verificam as oito coleções, todos os validadores e índices, a preservação
 de dados em reexecuções, a rejeição de documentos inválidos e e-mails duplicados,
-e uma consulta geoespacial real. Sem `MONGODB_TEST_URI` no ambiente ou `.env`, esses quatro testes são
-ignorados e a suíte em memória continua funcionando.
+e consultas geoespaciais reais. A fixture `real_db`, compartilhada em
+`tests/conftest.py`, cria e remove um banco exclusivo por teste. Sem
+`MONGODB_TEST_URI` no ambiente ou `.env`, os testes de integração são ignorados
+apenas na execução local; a suíte em memória continua funcionando.

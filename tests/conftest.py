@@ -1,10 +1,18 @@
+import os
 from collections.abc import AsyncIterator
+from uuid import uuid4
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 from mongomock_motor import AsyncMongoMockClient, AsyncMongoMockDatabase
+from pymongo import AsyncMongoClient
 
-from app.core.config import DatabaseSettings, Settings, StartupSettings
+from app.core.config import (
+    DatabaseSettings,
+    Settings,
+    StartupSettings,
+    get_database_settings,
+)
 from app.core.database import get_database
 from app.main import app
 
@@ -49,3 +57,21 @@ async def client(db: AsyncMongoMockDatabase) -> AsyncIterator[AsyncClient]:
             yield ac
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.fixture
+async def real_db():
+    uri = get_database_settings().mongodb_test_uri
+    if not uri:
+        if os.environ.get("CI", "").lower() == "true":
+            pytest.fail("CI requires MONGODB_TEST_URI; integration tests must run")
+        pytest.skip("Set MONGODB_TEST_URI to run real MongoDB integration tests")
+    async with AsyncMongoClient(
+        uri.get_secret_value(), serverSelectionTimeoutMS=5000
+    ) as client:
+        name = f"spacos_test_{uuid4().hex}"
+        assert name not in await client.list_database_names()
+        try:
+            yield client[name]
+        finally:
+            await client.drop_database(name)

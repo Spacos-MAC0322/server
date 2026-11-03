@@ -6,7 +6,6 @@ from pymongo.errors import AutoReconnect
 from app.main import app
 from app.repositories.place_repository import PlaceRepository
 from app.schemas.place import PlaceListQuery
-from app.services.place import PlaceService
 
 
 def place(identity="pin", *, status="published", location=True):
@@ -130,18 +129,6 @@ async def test_database_failure_returns_503_without_connection_details(
     assert response.status_code == 503
     assert "secret" not in response.text
     assert "private-host" not in response.text
-
-
-async def test_service_batches_curations_only_for_visible_places(db):
-    await db.places.insert_many([place("a"), place("b"), place("h", status="hidden")])
-    service = PlaceService(db)
-    mocked = AsyncMock(return_value={"a": {"place_id": "a", "hidden_gem": True}})
-    service.repository.find_curations = mocked
-    summaries = await service.list_places()
-    assert list(mocked.await_args.args[0]) == ["a", "b"]
-    assert mocked.await_count == 1
-    assert summaries[0].badges.hidden_gem is True
-    assert summaries[1].badges.hidden_gem is None
 
 
 async def test_empty_curation_batch_avoids_query(db, monkeypatch):
