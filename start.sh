@@ -71,7 +71,7 @@ fi
     die 'O ambiente selecionado precisa de Python 3.12 ou superior.'
 
 if ! "$PYTHON_BIN" -c \
-    'import fastapi, uvicorn, pytest, pytest_asyncio, pytest_cov, httpx, mongomock_motor, pydantic_settings; from pymongo import AsyncMongoClient' \
+    'import fastapi, uvicorn, pytest, pytest_asyncio, pytest_cov, httpx, mongomock_motor, pydantic_settings, tenacity, cachetools; from pymongo import AsyncMongoClient' \
     >/dev/null 2>&1; then
     "$PYTHON_BIN" -m pip install -e '.[test]'
 fi
