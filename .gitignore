@@ -221,3 +221,6 @@ __marimo__/
 
 # Local MongoDB data and logs created by start.sh
 .dev/
+
+# Local API snapshots; keep small curated test fixtures in tests/fixtures instead.
+data/mapas_culturais/

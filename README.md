@@ -155,8 +155,9 @@ automaticamente. Uma falha encerra o comando com erro e, após o início da
 sincronização, fica registrada em `sync_runs`. Erros de arquivo/configuração
 anteriores à conexão não criam histórico no banco.
 
-A busca percorre páginas ordenadas por ID e solicita todos os campos disponíveis
-(sem `@select`), permitindo receber metadados opcionais de cada instância. Usa
+A busca percorre páginas ordenadas por ID e solicita explicitamente os campos
+de `SPACE_FIELDS` com `@select`. Na instância SAAS, omitir esse parâmetro retorna
+somente `id` (verificado em 03/11/2026), não todos os campos. Usa
 `status=EQ(1)` e `En_Municipio=ILIKE(São Paulo)`, validando novamente o município
 localmente. Na importação de amostras, aceita também o município no final do
 endereço quando o campo próprio está ausente. Endereços sem confirmação são
@@ -182,6 +183,73 @@ não substituem os dados existentes. Falhas durante a escrita podem deixar uma
 importação parcial, registrada como `partial` com a quantidade concluída;
 reexecutar permite retomar sem duplicar. Nada é removido por ausência na fonte.
 O histórico distingue `running`, `success`, `partial` e `error`.
+
+## Coleta local para testes offline
+
+O comando abaixo coleta a API para arquivos e não grava no MongoDB:
+
+```powershell
+python -m app.scripts.export_mapas_spaces --output data/mapas_culturais/sp_2026-11-03
+```
+
+Usa a instância SAAS, filtro `status=EQ(1)` e `En_Municipio=ILIKE(São Paulo)`,
+500 registros por página e no máximo 20 páginas. `--base-url`, `--page-size`,
+`--max-pages` e `--timeout` permitem ajustar esses valores. A execução explicita
+a habilitação dessa integração apenas para a coleta; não altera `.env`.
+
+O diretório recebe:
+
+| Arquivo | Uso |
+| --- | --- |
+| `spaces_raw.json` | Respostas brutas deduplicadas, aceitas pelo job de importação offline |
+| `places_normalized.json` | Documentos `places` em Extended JSON, preservando datas BSON |
+| `pages/page_*.json` | Páginas brutas já recebidas, preservadas mesmo se a rede falhar depois |
+| `manifest.json` | Fonte, data, consulta, contagens, cobertura dos campos, hashes e completude |
+| `excluded.json` | Registros descartados pelo normalizador |
+
+A captura de 03/11/2026 foi concluída em cinco páginas de dados: 2.051 registros
+únicos, todos normalizáveis, sem exclusões. Desses, 1.879 têm coordenadas
+aproveitáveis, 297 informam horário e nenhum informa preço. A data de atualização
+mais recente da fonte é 30/07/2024; todos ultrapassam o critério atual de dois anos
+e entram com `stale_source: true`. A captura é útil para testes, mas não confirma
+o funcionamento atual de cada espaço.
+
+O arquivo foi reproduzido sem rede e importado duas vezes em um MongoDB
+temporário: permaneceu com 2.051 documentos, sem duplicatas. A consulta de exemplo
+`find_in_bounds(-23.56, -46.73, -23.52, -46.68)` encontrou 101 registros nessa cópia.
+O banco temporário foi removido; o banco principal não foi alterado.
+Três registros reais representativos estão versionáveis em
+`tests/fixtures/mapas_culturais/spaces_sample.json`, com a origem em
+`provenance.json`, para regressão offline na CI.
+
+Repetir o comando no mesmo diretório usa os arquivos salvos, verifica o hash e
+não faz chamadas à API. Para solicitar uma coleta nova, escolha outro diretório
+vazio. Uma captura interrompida, limitada por `--max-pages` ou com contagem
+divergente é marcada `complete: false` e o comando termina com código 1.
+Os dados parciais continuam disponíveis, mas não representam coleta completa.
+
+Para popular o banco configurado usando somente o arquivo local:
+
+```powershell
+python -m app.jobs.sync_places --input data/mapas_culturais/sp_2026-11-03/spaces_raw.json --source-url https://saas.mapas.cultura.gov.br
+```
+
+Os documentos entram em `review`. A coleta não publica espaços nem modifica
+o banco. Os arquivos completos em `data/mapas_culturais/` ficam fora do Git;
+fixtures pequenas em `tests/fixtures/` podem ser versionadas.
+
+Na investigação de 03/11/2026, a consulta nacional mínima respondeu com 55.197
+registros na contagem da fonte; o filtro municipal respondeu com 2.051.
+Essas contagens não equivalem a um censo de espaços visitáveis: dependem do
+preenchimento do município, da publicação e da qualidade da origem.
+Também foram observados desafios Cloudflare com HTTP 403 e HTML, enquanto
+outras consultas na mesma instância responderam JSON. Esse comportamento é
+compatível com proteção de tráfego automatizado; os testes não permitem afirmar
+qual regra ou característica da requisição determinou o bloqueio.
+O cabeçalho `cf-mitigated: challenge`, quando presente, identifica esse tipo de
+[resposta de desafio](https://developers.cloudflare.com/cloudflare-challenges/challenge-types/challenge-pages/detect-response/).
+O endereço antigo `mapas.cultura.gov.br/api/...` redirecionou para uma página HTML;
+não deve ser assumido como endpoint equivalente da instância SAAS.
 
 ## CORS: acesso pelo frontend
 

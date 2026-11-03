@@ -1,8 +1,11 @@
 """Read public spaces without coupling the external API to MongoDB."""
 
+import json
 import math
 import re
 import unicodedata
+from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from urllib.parse import urlparse
 
@@ -16,6 +19,18 @@ from app.core.exceptions import (
 )
 
 SERVICE = "mapas_culturais"
+SPACE_FIELDS = (
+    "id,name,type,shortDescription,longDescription,location,public,endereco,"
+    "En_CEP,En_Bairro,En_Municipio,telefonePublico,site,horario,preco,"
+    "acessibilidade,acessibilidade_fisica,updateTimestamp,status"
+)
+
+
+@dataclass(frozen=True)
+class SpacePage:
+    number: int
+    records: list[dict]
+    metadata: dict
 
 
 def text(value):
@@ -139,14 +154,16 @@ class MapasCulturaisClient:
         self.settings = settings or get_settings()
         self.transport = transport
 
-    async def fetch_spaces(self, *, page_size: int = 100) -> list[dict]:
-        """Fetch all pages, normalize and deduplicate before any database writes."""
+    async def iter_space_pages(
+        self, *, page_size: int = 100
+    ) -> AsyncIterator[SpacePage]:
+        """Read explicit fields; this legacy API returns only id without @select."""
         if not self.settings.mapas_culturais_enabled:
             raise ValueError("Enable MAPAS_CULTURAIS_ENABLED before fetching spaces")
         if not 1 <= page_size <= 1000:
             raise ValueError("page_size must be between 1 and 1000")
         base = str(self.settings.mapas_culturais_base_url).rstrip("/")
-        spaces, seen = {}, set()
+        seen = set()
         async with httpx.AsyncClient(
             timeout=self.settings.external_api_timeout_seconds,
             transport=self.transport,
@@ -159,6 +176,7 @@ class MapasCulturaisClient:
                     response = await client.get(
                         f"{base}/api/space/find",
                         params={
+                            "@select": SPACE_FIELDS,
                             "@type": "json",
                             "@limit": page_size,
                             "@page": page,
@@ -183,16 +201,31 @@ class MapasCulturaisClient:
                     raise ExternalServiceInvalidResponse(SERVICE)
                 if not rows:
                     break
+                if any(not {"id", "name", "status"} <= r.keys() for r in rows):
+                    raise ExternalServiceInvalidResponse(SERVICE)
                 ids = {str(r.get("id")) for r in rows}
                 if not ids - seen:
                     raise ExternalServiceInvalidResponse(SERVICE)
                 seen.update(ids)
-                for row in rows:
-                    place = normalize_space(row, base)
-                    if place:
-                        spaces[place["_id"]] = place
+                try:
+                    metadata = json.loads(response.headers.get("api-metadata", "{}"))
+                except ValueError:
+                    metadata = {}
+                yield SpacePage(
+                    page, rows, metadata if isinstance(metadata, dict) else {}
+                )
                 # An empty next page is authoritative even if the server caps @limit.
                 page += 1
+
+    async def fetch_spaces(self, *, page_size: int = 100) -> list[dict]:
+        """Fetch and normalize every page before any database writes."""
+        spaces = {}
+        base = str(self.settings.mapas_culturais_base_url).rstrip("/")
+        async for page in self.iter_space_pages(page_size=page_size):
+            for row in page.records:
+                place = normalize_space(row, base)
+                if place:
+                    spaces[place["_id"]] = place
         return list(spaces.values())
 
 
