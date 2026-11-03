@@ -9,19 +9,23 @@ from .api.routers import places
 from .core.config import get_cors_origins
 from .core.database import connect_database
 from .routers import health, template
+from .core.http_client import create_http_client, register_exception_handlers
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    async with connect_database() as database:
+    async with connect_database() as database, create_http_client() as http_client:
         app.state.database = database
+        app.state.http_client = http_client
         try:
             yield
         finally:
             del app.state.database
+            del app.state.http_client
 
 
 app = FastAPI(lifespan=lifespan)
+register_exception_handlers(app)
 
 app.add_middleware(
     CORSMiddleware,
