@@ -113,7 +113,8 @@ Os adaptadores poderão consultar `get_settings()` ao serem construídos.
 
 O adaptador `app/integrations/mapas_culturais.py` oferece `fetch_spaces()`
 (também em `MapasCulturaisClient`). Retorna documentos normalizados para `places`;
-`app/services/sync_spaces.py` cuida da persistência e do histórico `sync_runs`.
+`app/services/sync_spaces.py` coordena a persistência pelo `PlaceRepository` e o
+histórico `sync_runs`.
 O pipeline é orquestrado por `app/jobs/sync_places.py`: ele consome esses módulos,
 abre/fecha a conexão e reutiliza os validadores e índices de
 `app/core/mongodb_schema.json`, instalados por `connect_database()`. A API e o
@@ -268,6 +269,53 @@ O cliente é fechado ao encerrar a aplicação.
 
 As rotas podem receber o banco com `Depends(get_database)`, importando
 `get_database` de `app.core.database`.
+
+## Repositório de espaços
+
+`app/repositories/place_repository.py` centraliza o acesso à coleção `places`,
+recebendo o banco já conectado e inicializado por `core.database`.
+
+| Método assíncrono | Contrato |
+| --- | --- |
+| `upsert_many(places)` | Recebe documentos normalizados e retorna a quantidade processada, incluindo atualizações |
+| `find_all()` | Retorna todos os documentos, inclusive os sem localização, ordenados por `_id` |
+| `find_in_bounds(sw_lat, sw_lng, ne_lat, ne_lng)` | Retorna documentos dentro do polígono delimitado pelos cantos sudoeste e nordeste, ordenados por `_id` |
+
+A gravação reaproveita o schema e os índices existentes, preservando identidade,
+publicação, campos curados e outras fontes. Todas as `source_keys` recebidas são
+mantidas. Chaves que apontem para locais diferentes exigem revisão manual, sem
+fusão automática. O lote é sequencial e não transacional: uma falha preserva as
+gravações anteriores. O callback opcional `on_progress` informa o total concluído
+para que a sincronização registre corretamente importações parciais.
+O job já utiliza esse repositório através do serviço de sincronização.
+
+A consulta por área usa `$geoWithin` com um polígono GeoJSON e o índice
+`location_2dsphere`, conforme a
+[documentação do MongoDB](https://www.mongodb.com/docs/v8.0/core/indexes/index-types/geospatial/2dsphere/query/geojson-bound-by-polygon/).
+Os parâmetros usam latitude/longitude; o polígono interno usa `[longitude, latitude]`.
+Os limites precisam ser finitos, estar nos intervalos geográficos e formar uma
+área não vazia, sem cruzar o antimeridiano e com menos de 180° de longitude.
+Locais sem coordenadas ficam fora da busca por área.
+
+```python
+from app.repositories.place_repository import PlaceRepository
+from app.schemas.place import PlaceSummarySchema
+
+repository = PlaceRepository(database)
+documents = await repository.find_in_bounds(-23.60, -46.70, -23.50, -46.50)
+summaries = [PlaceSummarySchema.from_mongo(doc) for doc in documents]
+```
+
+Os métodos retornam documentos de persistência, sem consultar a coleção de
+curadoria e sem aplicar filtro de publicação. A camada de serviço/rotas deve
+selecionar os documentos visíveis, consultar a curadoria quando necessário e
+converter para os schemas de resposta. `find_all()` inclui todos os estados.
+
+`find_in_bounds` atende à área visível de um mapa ou a uma área construída ao
+redor da posição do usuário. Não calcula distância, não ordena por proximidade
+e não equivale a um raio em quilômetros. Uma futura busca por raio/mais próximos
+terá um contrato próprio usando `$near` ou `$geoNear`. A localização do usuário
+é um parâmetro de consulta e não precisa ser gravada em `places`.
 
 ## Modelos de consulta de espaços
 

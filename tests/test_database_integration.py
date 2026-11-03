@@ -12,10 +12,65 @@ from app.core.config import Settings, get_database_settings
 from app.core.database import COLLECTION_DEFINITIONS, initialize_database
 from app.integrations.mapas_culturais import MapasCulturaisClient, normalize_space
 from app.jobs import sync_places as job
+from app.repositories.place_repository import PlaceRepository
 from app.schemas.place import PlaceDetailSchema, PlaceSummarySchema
 from app.services.sync_spaces import sync_spaces
 
 pytestmark = pytest.mark.integration
+
+
+async def test_repository_bounds_on_real_geojson_and_reimport(real_db):
+    await initialize_database(real_db)
+    repository = PlaceRepository(real_db)
+    records = []
+    for identity, coords in (
+        ("inside", [-46.63, -23.55]),
+        ("west", [-46.8, -23.55]),
+        ("east", [-46.4, -23.55]),
+        ("north", [-46.63, -23.4]),
+        ("south", [-46.63, -23.7]),
+        ("unknown", None),
+    ):
+        records.append(
+            {
+                "_id": identity,
+                "name": identity,
+                "source_keys": [f"test:{identity}"],
+                "sources": [{"provider": "test", "external_id": identity}],
+                "location": {"type": "Point", "coordinates": coords}
+                if coords
+                else None,
+            }
+        )
+    assert await repository.upsert_many(records) == 6
+    assert await repository.upsert_many(records) == 6
+    assert len(await repository.find_all()) == 6
+    results = await repository.find_in_bounds(-23.6, -46.7, -23.5, -46.5)
+    assert [r["_id"] for r in results] == ["inside"]
+    assert PlaceSummarySchema.from_mongo(results[0]).location.coordinates == (
+        -46.63,
+        -23.55,
+    )
+    assert await repository.find_in_bounds(-24, -47.2, -23.9, -47.1) == []
+    assert "location_2dsphere" in await real_db.places.index_information()
+
+
+async def test_repository_records_partial_sync_after_mongo_validation_error(real_db):
+    await initialize_database(real_db)
+    record = {
+        "_id": "valid",
+        "name": "Local",
+        "source_keys": ["test:valid"],
+        "sources": [{"provider": "test", "external_id": "valid"}],
+    }
+    invalid = dict(record, _id="invalid", name="", source_keys=["test:invalid"])
+    with pytest.raises(WriteError):
+        await sync_spaces(real_db, spaces=[record, invalid])
+    result = await real_db.sync_runs.find_one({})
+    assert result["status"] == "partial"
+    assert result["imported"] == 1
+    assert result["errors"] == ["WriteError"]
+    assert [r["_id"] for r in await PlaceRepository(real_db).find_all()] == ["valid"]
 
 
 async def test_read_schemas_project_real_persisted_place_and_curation(real_db):
