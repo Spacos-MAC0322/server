@@ -114,6 +114,12 @@ Os adaptadores poderão consultar `get_settings()` ao serem construídos.
 O adaptador `app/integrations/mapas_culturais.py` oferece `fetch_spaces()`
 (também em `MapasCulturaisClient`). Retorna documentos normalizados para `places`;
 `app/services/sync_spaces.py` cuida da persistência e do histórico `sync_runs`.
+O pipeline é orquestrado por `app/jobs/sync_places.py`: ele consome esses módulos,
+abre/fecha a conexão e reutiliza os validadores e índices de
+`app/core/mongodb_schema.json`, instalados por `connect_database()`. A API e o
+job compartilham esse mesmo schema; não há uma definição paralela de `places`.
+Na coleta pela API, os dados já chegam normalizados pelo adaptador. Arquivos
+de coleta bruta passam pela mesma função `normalize_space()` antes da gravação.
 Não é necessário alterar o modelo do MongoDB. A importação é explícita, fora
 do início da API, para não condicionar sua disponibilidade ao provedor externo.
 
@@ -122,7 +128,7 @@ Na pasta `server`, configure a instância desejada e execute:
 ```powershell
 $env:MAPAS_CULTURAIS_ENABLED = "true"
 $env:MAPAS_CULTURAIS_BASE_URL = "https://saas.mapas.cultura.gov.br"
-python -m app.scripts.sync_spaces
+python -m app.jobs.sync_places
 ```
 
 O endereço acima identifica a fonte da amostra anterior do projeto. Na consulta
@@ -134,11 +140,19 @@ Consulte o contrato de consulta em
 Para importar uma coleta bruta já existente, identificando sua fonte:
 
 ```powershell
-python -m app.scripts.sync_spaces --input "caminho/space_find_detailed.json" --source-url "https://saas.mapas.cultura.gov.br"
+python -m app.jobs.sync_places --input "caminho/space_find_detailed.json" --source-url "https://saas.mapas.cultura.gov.br"
 ```
 
 Essa opção não exige habilitar chamadas externas e registra `source: snapshot` no
 histórico; não representa uma coleta atual nem cobertura completa da cidade.
+
+O comando anterior `python -m app.scripts.sync_spaces` permanece compatível e
+delega ao mesmo job, aceitando as mesmas opções. Para invocação por outro módulo
+assíncrono, use `await sync_places()`, importando a função de
+`app.jobs.sync_places`; ela retorna o resumo da execução. O job não é agendado
+automaticamente. Uma falha encerra o comando com erro e, após o início da
+sincronização, fica registrada em `sync_runs`. Erros de arquivo/configuração
+anteriores à conexão não criam histórico no banco.
 
 A busca percorre páginas ordenadas por ID e solicita todos os campos disponíveis
 (sem `@select`), permitindo receber metadados opcionais de cada instância. Usa

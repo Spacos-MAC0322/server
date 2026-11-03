@@ -1,17 +1,69 @@
 """Opt-in checks against a real MongoDB, using an isolated temporary database."""
 
+from contextlib import asynccontextmanager
 from uuid import uuid4
 
+import httpx
 import pytest
 from pymongo import AsyncMongoClient
 from pymongo.errors import DuplicateKeyError, OperationFailure, WriteError
 
-from app.core.config import get_database_settings
+from app.core.config import Settings, get_database_settings
 from app.core.database import COLLECTION_DEFINITIONS, initialize_database
-from app.integrations.mapas_culturais import normalize_space
+from app.integrations.mapas_culturais import MapasCulturaisClient, normalize_space
+from app.jobs import sync_places as job
 from app.services.sync_spaces import sync_spaces
 
 pytestmark = pytest.mark.integration
+
+
+async def test_places_job_consumes_adapter_with_shared_mongo_schema(
+    real_db, monkeypatch
+):
+    @asynccontextmanager
+    async def connect():
+        await initialize_database(real_db)
+        yield real_db
+
+    monkeypatch.setattr(job, "connect_database", connect)
+    raw = {
+        "id": 19,
+        "name": "Museu do pipeline",
+        "status": 1,
+        "En_Municipio": "São Paulo",
+        "location": {"longitude": "-46.63", "latitude": "-23.55"},
+    }
+    client = MapasCulturaisClient(
+        Settings(
+            mapas_culturais_enabled=True,
+            mapas_culturais_base_url="https://saas.mapas.cultura.gov.br",
+        ),
+        transport=httpx.MockTransport(
+            lambda r: httpx.Response(
+                200,
+                json=[raw] if r.url.params["@page"] == "1" else [],
+            )
+        ),
+    )
+    for _ in range(2):
+        result = await job.sync_places(client=client)
+        assert result["imported"] == 1
+    assert await real_db.places.count_documents({}) == 1
+    options = await real_db.places.options()
+    assert options["validator"] == COLLECTION_DEFINITIONS["places"]["validator"]
+    saved = await real_db.places.find_one(
+        {
+            "location": {
+                "$near": {
+                    "$geometry": {"type": "Point", "coordinates": [-46.63, -23.55]},
+                    "$maxDistance": 100,
+                }
+            }
+        }
+    )
+    assert saved["_id"] == "mapas_saas:space:19"
+    with pytest.raises(WriteError):
+        await real_db.places.update_one({"_id": saved["_id"]}, {"$set": {"name": 42}})
 
 
 async def test_real_sync_schema_upsert_and_geospatial_index(real_db):
