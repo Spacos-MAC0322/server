@@ -25,6 +25,65 @@ Latitude = Annotated[float, Field(strict=True, ge=-90, le=90, allow_inf_nan=Fals
 Price = Annotated[float, Field(allow_inf_nan=False)]
 
 
+class PlaceListQuery(BaseModel):
+    """All four map bounds or none, using latitude/longitude query parameters."""
+
+    sw_lat: float | None = Field(
+        default=None,
+        ge=-90,
+        le=90,
+        allow_inf_nan=False,
+        description="Latitude do canto sudoeste",
+    )
+    sw_lng: float | None = Field(
+        default=None,
+        ge=-180,
+        le=180,
+        allow_inf_nan=False,
+        description="Longitude do canto sudoeste",
+    )
+    ne_lat: float | None = Field(
+        default=None,
+        ge=-90,
+        le=90,
+        allow_inf_nan=False,
+        description="Latitude do canto nordeste",
+    )
+    ne_lng: float | None = Field(
+        default=None,
+        ge=-180,
+        le=180,
+        allow_inf_nan=False,
+        description="Longitude do canto nordeste",
+    )
+
+    @model_validator(mode="after")
+    def validate_bounds(self) -> Self:
+        values = (self.sw_lat, self.sw_lng, self.ne_lat, self.ne_lng)
+        present = sum(v is not None for v in values)
+        if present not in (0, 4):
+            raise ValueError("Informe sw_lat, sw_lng, ne_lat e ne_lng juntos")
+        bounds = self.bounds
+        if bounds is not None:
+            sw_lat, sw_lng, ne_lat, ne_lng = bounds
+            if sw_lat >= ne_lat or sw_lng >= ne_lng:
+                raise ValueError("O canto sudoeste deve estar abaixo do canto nordeste")
+            if ne_lng - sw_lng >= 180:
+                raise ValueError("A área deve ter menos de 180 graus de longitude")
+        return self
+
+    @property
+    def bounds(self) -> tuple[float, float, float, float] | None:
+        if (
+            self.sw_lat is not None
+            and self.sw_lng is not None
+            and self.ne_lat is not None
+            and self.ne_lng is not None
+        ):
+            return self.sw_lat, self.sw_lng, self.ne_lat, self.ne_lng
+        return None
+
+
 class ReadSchema(BaseModel):
     model_config = ConfigDict(extra="ignore")
 

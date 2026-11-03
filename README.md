@@ -306,8 +306,9 @@ documents = await repository.find_in_bounds(-23.60, -46.70, -23.50, -46.50)
 summaries = [PlaceSummarySchema.from_mongo(doc) for doc in documents]
 ```
 
-Os métodos retornam documentos de persistência, sem consultar a coleção de
-curadoria e sem aplicar filtro de publicação. A camada de serviço/rotas deve
+`find_all` e `find_in_bounds` retornam documentos de persistência sem aplicar
+filtro de publicação. `find_curations(place_ids)` consulta as badges da curadoria
+em lote. A camada de serviço/rotas deve
 selecionar os documentos visíveis, consultar a curadoria quando necessário e
 converter para os schemas de resposta. `find_all()` inclui todos os estados.
 
@@ -359,9 +360,40 @@ desconhecidas. Informações desconhecidas de horário e preço continuam nulas.
 da curadoria não são incluídos nas respostas. As fontes e avisos de qualidade
 úteis para consulta aparecem no detalhe.
 
-Esses modelos não criam endpoints nem filtram a publicação. As futuras rotas
-devem selecionar os espaços visíveis e consultar `place_curations` quando
-necessário, antes de construir a resposta.
+Esses modelos não filtram a publicação. O serviço de consulta seleciona os
+espaços visíveis e incorpora as badges de `place_curations` antes da resposta.
+
+## API de pinos do mapa
+
+`GET /api/places` retorna um array de `PlaceSummarySchema`, montado pelo serviço
+`app/services/place.py` e exposto por `app/api/routers/places.py`.
+
+```text
+GET /api/places
+GET /api/places?sw_lat=-23.60&sw_lng=-46.70&ne_lat=-23.50&ne_lng=-46.50
+```
+
+Sem parâmetros, lista todos os espaços disponíveis para pinos. Com os quatro
+limites, consulta a área pelo repositório geográfico. Informar apenas parte dos
+limites, coordenadas não finitas ou fora dos intervalos, área vazia/invertida ou
+com 180° ou mais de longitude retorna HTTP 422. O contrato não cruza o
+antimeridiano e não representa busca por raio ou distância.
+
+A resposta contém `id`, `name`, `primary_category`, `location` e `badges`.
+As coordenadas GeoJSON permanecem `[longitude, latitude]`. Só aparecem registros
+com `publication_status: published` e localização disponível; registros com
+`data_quality.location_valid: false` também ficam de fora. Documentos em revisão,
+ocultos, arquivados ou sem estado de publicação não são exibidos.
+Como a importação cria registros em `review`, é esperado receber `[]` enquanto
+nenhum local tiver sido revisado e publicado. A consulta não publica registros.
+
+As badges de curadoria são consultadas em um único lote para os locais visíveis.
+Dados desconhecidos continuam `null`, e campos internos da persistência não são
+incluídos. A ordenação é por ID; o endpoint não aplica paginação nem truncamento.
+Nenhum resultado produz HTTP 200 com `[]`. Falhas do MongoDB retornam HTTP 503
+com uma mensagem genérica. A consulta utiliza apenas o banco local, sem coletar
+dados ou chamar o Mapas Culturais durante a requisição.
+Os parâmetros e o schema de resposta aparecem em `/docs`.
 
 ## Verificação
 

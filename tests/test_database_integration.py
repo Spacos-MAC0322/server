@@ -5,18 +5,84 @@ from uuid import uuid4
 
 import httpx
 import pytest
+from httpx import ASGITransport, AsyncClient
 from pymongo import AsyncMongoClient
 from pymongo.errors import DuplicateKeyError, OperationFailure, WriteError
 
 from app.core.config import Settings, get_database_settings
-from app.core.database import COLLECTION_DEFINITIONS, initialize_database
+from app.core.database import COLLECTION_DEFINITIONS, get_database, initialize_database
 from app.integrations.mapas_culturais import MapasCulturaisClient, normalize_space
 from app.jobs import sync_places as job
+from app.main import app
 from app.repositories.place_repository import PlaceRepository
 from app.schemas.place import PlaceDetailSchema, PlaceSummarySchema
 from app.services.sync_spaces import sync_spaces
 
 pytestmark = pytest.mark.integration
+
+
+async def test_places_api_reads_public_pins_with_real_bounds_and_curation(real_db):
+    await initialize_database(real_db)
+    for identity, lon, status, located in (
+        ("inside", -46.63, "published", True),
+        ("outside", -46.8, "published", True),
+        ("hidden", -46.63, "hidden", True),
+        ("review", -46.63, "review", True),
+        ("unknown", -46.63, "published", False),
+    ):
+        await real_db.places.insert_one(
+            {
+                "_id": identity,
+                "name": identity,
+                "publication_status": status,
+                "source_keys": [f"test:{identity}"],
+                "sources": [{"provider": "test", "external_id": identity}],
+                "location": {"type": "Point", "coordinates": [lon, -23.55]}
+                if located
+                else None,
+            }
+        )
+    await real_db.place_curations.insert_one(
+        {
+            "_id": "inside-curation",
+            "place_id": "inside",
+            "family_friendly": True,
+        }
+    )
+    app.dependency_overrides[get_database] = lambda: real_db
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as ac:
+            response = await ac.get("/api/places")
+            assert response.status_code == 200
+            assert [p["id"] for p in response.json()] == ["inside", "outside"]
+            response = await ac.get(
+                "/api/places",
+                params={
+                    "sw_lat": -23.6,
+                    "sw_lng": -46.7,
+                    "ne_lat": -23.5,
+                    "ne_lng": -46.5,
+                },
+            )
+            assert response.status_code == 200
+            assert [p["id"] for p in response.json()] == ["inside"]
+            assert response.json()[0]["badges"]["family_friendly"] is True
+            assert response.json()[0]["badges"]["pet_friendly"] is None
+            empty = await ac.get(
+                "/api/places",
+                params={
+                    "sw_lat": -24,
+                    "sw_lng": -47.2,
+                    "ne_lat": -23.9,
+                    "ne_lng": -47.1,
+                },
+            )
+            assert empty.status_code == 200
+            assert empty.json() == []
+    finally:
+        app.dependency_overrides.pop(get_database, None)
 
 
 async def test_repository_bounds_on_real_geojson_and_reimport(real_db):

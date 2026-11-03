@@ -11,6 +11,25 @@ class PlaceRepository:
     def __init__(self, database: AsyncDatabase):
         # Connections, validators and indexes belong to core.database.
         self.collection = database.places
+        self.curations = database.place_curations
+
+    async def find_curations(self, place_ids: Iterable[str]) -> dict[str, dict]:
+        """Read badge flags in one batch; full curation evidence stays in MongoDB."""
+        identities = list(dict.fromkeys(place_ids))
+        if not identities:
+            return {}
+        rows = await self.curations.find(
+            {"place_id": {"$in": identities}},
+            {
+                "_id": 0,
+                "place_id": 1,
+                "pet_friendly": 1,
+                "family_friendly": 1,
+                "lgbtqia_inclusion": 1,
+                "hidden_gem": 1,
+            },
+        ).to_list()
+        return {row["place_id"]: row for row in rows}
 
     async def upsert_many(
         self,
