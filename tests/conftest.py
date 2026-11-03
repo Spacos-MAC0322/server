@@ -1,6 +1,6 @@
 import os
-from uuid import uuid4
 from collections.abc import AsyncIterator, Callable
+from uuid import uuid4
 
 import pytest
 from httpx import ASGITransport, AsyncClient, MockTransport

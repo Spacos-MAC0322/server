@@ -8,8 +8,8 @@ from .api.error_handlers import register_error_handlers
 from .api.routers import places
 from .core.config import get_cors_origins
 from .core.database import connect_database
-from .routers import health, template
 from .core.http_client import create_http_client, register_exception_handlers
+from .routers import health, template
 
 
 @asynccontextmanager
