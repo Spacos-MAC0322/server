@@ -109,6 +109,65 @@ público não exige token para o uso previsto. Os comandos diretos do banco usam
 A validação verifica formatos e pré-requisitos, sem realizar chamadas de rede.
 Os adaptadores poderão consultar `get_settings()` ao serem construídos.
 
+## Importar espaços do Mapas Culturais
+
+O adaptador `app/integrations/mapas_culturais.py` oferece `fetch_spaces()`
+(também em `MapasCulturaisClient`). Retorna documentos normalizados para `places`;
+`app/services/sync_spaces.py` cuida da persistência e do histórico `sync_runs`.
+Não é necessário alterar o modelo do MongoDB. A importação é explícita, fora
+do início da API, para não condicionar sua disponibilidade ao provedor externo.
+
+Na pasta `server`, configure a instância desejada e execute:
+
+```powershell
+$env:MAPAS_CULTURAIS_ENABLED = "true"
+$env:MAPAS_CULTURAIS_BASE_URL = "https://saas.mapas.cultura.gov.br"
+python -m app.scripts.sync_spaces
+```
+
+O endereço acima identifica a fonte da amostra anterior do projeto. Na consulta
+de 30/10/2026, retornou HTTP 403 (desafio Cloudflare); a disponibilidade da coleta
+ao vivo precisa ser confirmada na instância usada. Não há troca silenciosa de fonte.
+Consulte o contrato de consulta em
+[Documentação da API](https://manual.rededasartes.funarte.gov.br/docs/devs/reference/api/querying).
+
+Para importar uma coleta bruta já existente, identificando sua fonte:
+
+```powershell
+python -m app.scripts.sync_spaces --input "caminho/space_find_detailed.json" --source-url "https://saas.mapas.cultura.gov.br"
+```
+
+Essa opção não exige habilitar chamadas externas e registra `source: snapshot` no
+histórico; não representa uma coleta atual nem cobertura completa da cidade.
+
+A busca percorre páginas ordenadas por ID e solicita todos os campos disponíveis
+(sem `@select`), permitindo receber metadados opcionais de cada instância. Usa
+`status=EQ(1)` e `En_Municipio=ILIKE(São Paulo)`, validando novamente o município
+localmente. Na importação de amostras, aceita também o município no final do
+endereço quando o campo próprio está ausente. Endereços sem confirmação são
+descartados. Coordenadas são GeoJSON `[longitude, latitude]`, finitas e dentro
+de uma área de plausibilidade de SP; não substituem a confirmação do município.
+Coordenadas ausentes/inválidas ficam nulas, para revisão e fora do mapa.
+
+Nome, categoria da fonte, endereço, horário e preço textual são preservados.
+Campos ausentes ficam desconhecidos; não se inferem gratuidade, preço numérico,
+acesso público ou horário a partir da descrição. `public` não significa entrada
+livre. Todos os novos locais entram como `publication_status: review`.
+A categoria da fonte também alimenta `categories`, sem impor taxonomia própria.
+
+Reexecuções atualizam por `source_keys`, mantendo a identidade `mapas_saas:space:ID`
+para a instância SAAS e incluindo o hostname nas demais instâncias. Não há
+deduplicação automática entre provedores. Outras fontes e o estado de publicação
+são preservados. Documentos com `data_quality.detail_level: curated` preservam
+seus campos de curadoria; somente a referência da fonte é atualizada.
+
+Falhas de rede, timeout ou formato são traduzidas para as exceções já usadas
+pelo backend. A coleta termina antes das gravações: falhas em páginas seguintes
+não substituem os dados existentes. Falhas durante a escrita podem deixar uma
+importação parcial, registrada como `partial` com a quantidade concluída;
+reexecutar permite retomar sem duplicar. Nada é removido por ausência na fonte.
+O histórico distingue `running`, `success`, `partial` e `error`.
+
 ## CORS: acesso pelo frontend
 
 A API permite por padrão as origens `http://localhost:5173` e

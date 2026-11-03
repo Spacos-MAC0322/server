@@ -6,6 +6,8 @@ dependencies = [
     "fastapi",
     "uvicorn[standard]",
     "pymongo>=4.13,<5",
+    "httpx>=0.28,<1",
+    "tzdata; sys_platform == 'win32'",
     "pydantic-settings>=2.9,<3",
 ]
 
@@ -14,7 +16,6 @@ test = [
     "pytest",
     "pytest-asyncio",
     "pytest-cov",
-    "httpx",
     "mongomock-motor",
 ]
 lint = [

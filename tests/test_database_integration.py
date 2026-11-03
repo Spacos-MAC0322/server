@@ -8,8 +8,39 @@ from pymongo.errors import DuplicateKeyError, OperationFailure, WriteError
 
 from app.core.config import get_database_settings
 from app.core.database import COLLECTION_DEFINITIONS, initialize_database
+from app.integrations.mapas_culturais import normalize_space
+from app.services.sync_spaces import sync_spaces
 
 pytestmark = pytest.mark.integration
+
+
+async def test_real_sync_schema_upsert_and_geospatial_index(real_db):
+    await initialize_database(real_db)
+    place = normalize_space(
+        {
+            "id": 8,
+            "name": "Museu de teste",
+            "status": 1,
+            "En_Municipio": "São Paulo",
+            "location": {"longitude": -46.63, "latitude": -23.55},
+        },
+        "https://saas.mapas.cultura.gov.br",
+    )
+    await sync_spaces(real_db, spaces=[place])
+    await sync_spaces(real_db, spaces=[place])
+    assert await real_db.places.count_documents({}) == 1
+    saved = await real_db.places.find_one(
+        {
+            "location": {
+                "$near": {
+                    "$geometry": place["location"],
+                    "$maxDistance": 100,
+                }
+            }
+        }
+    )
+    assert saved["source_keys"] == [place["_id"]]
+    assert await real_db.sync_runs.count_documents({"status": "success"}) == 2
 
 
 @pytest.fixture
