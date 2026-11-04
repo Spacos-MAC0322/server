@@ -89,12 +89,14 @@ class Settings(StartupSettings):
     sptrans_enabled: bool = False
     sptrans_base_url: HttpUrl | None = None
     sptrans_token: SecretStr | None = None
+    sptrans_gtfs_path: Path | None = None
     open_meteo_enabled: bool = False
     open_meteo_base_url: HttpUrl = "https://api.open-meteo.com"
 
     @field_validator(
         "jwt_secret",
         "sptrans_token",
+        "sptrans_gtfs_path",
         "mapas_culturais_base_url",
         "geosampa_base_url",
         "sptrans_base_url",
