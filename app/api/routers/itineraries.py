@@ -1,4 +1,4 @@
-"""Itinerary queries with optional São Paulo weather enrichment."""
+"""Itinerary queries, weather and transit estimates for São Paulo."""
 
 from datetime import date as Date
 from typing import Annotated
@@ -12,8 +12,9 @@ from app.core.config import Settings, get_settings
 from app.core.database import get_database
 from app.core.http_client import get_http_client
 from app.integrations.open_meteo import OpenMeteoClient
+from app.integrations.sptrans import SPTransClient
 from app.repositories.itinerary_repository import ItineraryRepository
-from app.schemas.itinerary import ItineraryResponse, WeatherResponse
+from app.schemas.itinerary import ItineraryResponse, TransitLegSchema, WeatherResponse
 from app.services.itinerary_planner import ItineraryPlanner
 
 router = APIRouter(prefix="/api/itineraries", tags=["itineraries"])
@@ -23,7 +24,9 @@ def get_itinerary_planner(
     http: Annotated[httpx.AsyncClient, Depends(get_http_client)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> ItineraryPlanner:
-    return ItineraryPlanner(OpenMeteoClient(http, settings))
+    return ItineraryPlanner(
+        OpenMeteoClient(http, settings), transit_client=SPTransClient(http, settings)
+    )
 
 
 def get_itinerary_repository(
@@ -32,7 +35,7 @@ def get_itinerary_repository(
     return ItineraryRepository(database)
 
 
-# Keep the static route before /{itinerary_id}, so "weather" is never an ID.
+# Keep static routes before /{itinerary_id}.
 @router.get(
     "/weather",
     response_model=WeatherResponse,
@@ -54,6 +57,42 @@ async def get_weather(
             status_code=422, detail="Data inválida; use YYYY-MM-DD."
         ) from None
     return await planner.get_weather(day)
+
+
+@router.get(
+    "/transit",
+    response_model=TransitLegSchema,
+    summary="Estimar deslocamento entre duas coordenadas",
+    description=(
+        "Consulta conexões diretas de ônibus pelo GTFS para o horário atual. "
+        "A duração é estimada em minutos e inclui caminhada, espera e viagem. "
+        "Sem conexão ou com GTFS indisponível, suggested_lines fica vazio e a "
+        "duração estima caminhada. from_place_id='origin' e "
+        "to_place_id='destination' identificam as coordenadas desta consulta; "
+        "não são identificadores de lugares salvos. Não exige autenticação "
+        "na Olho Vivo nem consulta ao banco de dados."
+    ),
+)
+async def get_transit(
+    from_lat: Annotated[float, Query(ge=-90, le=90, allow_inf_nan=False)],
+    from_lng: Annotated[float, Query(ge=-180, le=180, allow_inf_nan=False)],
+    to_lat: Annotated[float, Query(ge=-90, le=90, allow_inf_nan=False)],
+    to_lng: Annotated[float, Query(ge=-180, le=180, allow_inf_nan=False)],
+    planner: Annotated[ItineraryPlanner, Depends(get_itinerary_planner)],
+) -> TransitLegSchema:
+    legs = await planner.calculate_transit_legs(
+        [
+            {
+                "id": "origin",
+                "location": {"type": "Point", "coordinates": [from_lng, from_lat]},
+            },
+            {
+                "id": "destination",
+                "location": {"type": "Point", "coordinates": [to_lng, to_lat]},
+            },
+        ]
+    )
+    return legs[0]
 
 
 @router.get(
