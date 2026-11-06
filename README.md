@@ -132,6 +132,28 @@ O cliente é fechado ao encerrar a aplicação.
 As rotas podem receber o banco com `Depends(get_database)`, importando
 `get_database` de `app.core.database`.
 
+## Autenticação
+
+Contas usam e-mail e senha (hash bcrypt) e sessões por token JWT, enviado no
+cabeçalho `Authorization: Bearer <token>`.
+
+| Método | Rota | Descrição |
+| --- | --- | --- |
+| `POST` | `/api/auth/register` | Cria a conta (`name`, `email`, `password` de 8 caracteres a 72 bytes). `409` se o e-mail já existir. |
+| `POST` | `/api/auth/login` | Devolve `access_token`, `token_type` e `expires_in` (segundos). `401` se as credenciais forem inválidas. |
+| `GET` | `/api/auth/me` | Usuário do token. `401` sem token ou com token inválido/expirado. |
+
+Rotas privadas declaram `user: CurrentUser` e rotas públicas personalizáveis
+declaram `user: OptionalUser` (ambos de `app.core.security`).
+
+| Variável | Padrão | Uso |
+| --- | --- | --- |
+| `JWT_SECRET_KEY` | — (obrigatória) | Segredo que assina os tokens. Sem ela a API não inicia; o `start.sh` gera um segredo temporário se ela não estiver definida. |
+| `JWT_EXPIRE_MINUTES` | `1440` | Validade do token. |
+| `CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | Origens do frontend autorizadas, separadas por vírgula. |
+
+Veja `.env.example` para um modelo das variáveis.
+
 ## Verificação
 
 ```powershell
