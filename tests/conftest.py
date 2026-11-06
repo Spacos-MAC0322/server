@@ -4,11 +4,22 @@ import pytest
 from httpx import ASGITransport, AsyncClient, MockTransport
 from mongomock_motor import AsyncMongoMockClient, AsyncMongoMockDatabase
 
+from app.core import security
 from app.core.database import get_database
 from app.core.http_client import ExternalAPIClient, create_http_client
 from app.main import app
 
 from .http_support import BASE_URL, SERVICE
+
+TEST_JWT_SECRET = "test-secret-key-with-at-least-32-bytes"
+
+
+@pytest.fixture(autouse=True)
+def security_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A known signing secret, and the cheapest bcrypt cost so tests stay fast.
+    monkeypatch.setenv("JWT_SECRET_KEY", TEST_JWT_SECRET)
+    monkeypatch.delenv("JWT_EXPIRE_MINUTES", raising=False)
+    monkeypatch.setattr(security, "BCRYPT_ROUNDS", 4)
 
 
 class Clock:
