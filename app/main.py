@@ -5,15 +5,16 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .api.error_handlers import register_error_handlers
-from .api.routers import places
+from .api.routers import auth, health, places, template
 from .core.config import get_cors_origins
 from .core.database import connect_database
 from .core.http_client import create_http_client, register_exception_handlers
-from .routers import health, template
+from .core.security import configure_security
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    configure_security()
     async with connect_database() as database, create_http_client() as http_client:
         app.state.database = database
         app.state.http_client = http_client
@@ -39,4 +40,5 @@ register_error_handlers(app)
 
 app.include_router(health.router)
 app.include_router(template.router)
+app.include_router(auth.router)
 app.include_router(places.router)

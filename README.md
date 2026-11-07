@@ -79,7 +79,8 @@ O `.env` é interpretado como dados, nunca executado como código de shell.
 | `CORS_ORIGINS` | Origens locais do Vite, separadas por vírgulas |
 | `EXTERNAL_API_TIMEOUT_SECONDS` | `10`, deve ser positivo e finito |
 | `AUTH_ENABLED` | `false`; quando verdadeiro, exige `JWT_SECRET` |
-| `JWT_SECRET` | Sem padrão; quando fornecido, pelo menos 32 caracteres não vazios |
+| `JWT_SECRET` | Sem padrão; obrigatório para iniciar a API (assina os tokens de login), com pelo menos 32 caracteres não vazios. Se omitido, `start.sh` gera um segredo temporário |
+| `JWT_EXPIRE_MINUTES` | `1440` (1 dia); validade do token de login, deve ser positivo |
 | `MAPAS_CULTURAIS_ENABLED` / `MAPAS_CULTURAIS_BASE_URL` | Desabilitado; ao habilitar, exige URL HTTP(S) |
 | `GEOSAMPA_ENABLED` / `GEOSAMPA_BASE_URL` | Desabilitado; ao habilitar, exige URL HTTP(S) |
 | `SPTRANS_ENABLED` / `SPTRANS_BASE_URL` / `SPTRANS_TOKEN` | Desabilitado; ao habilitar, exige URL e token |
@@ -101,8 +102,8 @@ Nunca publique esses segredos em variáveis `VITE_*` do frontend.
 Para gerar um segredo JWT localmente, pode-se usar
 `python -c "import secrets; print(secrets.token_urlsafe(32))"` e guardá-lo no `.env`.
 
-Esses campos preparam a configuração dos futuros módulos; não implementam login,
-proteção de rotas ou adaptadores. URLs de Mapas Culturais, GeoSampa e SPTrans
+Login e proteção de rotas estão descritos em [Autenticação](#autenticação); os
+demais campos preparam a configuração dos adaptadores. URLs de Mapas Culturais, GeoSampa e SPTrans
 ficam sem padrão até confirmar os endpoints efetivamente usados. Open-Meteo
 público não exige token para o uso previsto. Os comandos diretos do banco usam
 `DatabaseSettings` e não exigem JWT ou credenciais de integrações.
@@ -270,7 +271,7 @@ O arquivo `server/.env` também pode fornecer `CORS_ORIGINS`.
 
 Os métodos permitidos são `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS` e
 `HEAD`. São aceitos os cabeçalhos `Content-Type` e `Authorization`, permitindo
-JSON e o futuro JWT enviado como `Authorization: Bearer ...`. O envio de cookies
+JSON e o JWT enviado como `Authorization: Bearer ...`. O envio de cookies
 entre origens não está habilitado. CORS não substitui a autenticação das rotas.
 
 ## Inicialização do banco
@@ -337,6 +338,25 @@ O cliente é fechado ao encerrar a aplicação.
 
 As rotas podem receber o banco com `Depends(get_database)`, importando
 `get_database` de `app.core.database`.
+
+## Autenticação
+
+Contas usam e-mail e senha (hash bcrypt) e sessões por token JWT, enviado no
+cabeçalho `Authorization: Bearer <token>`.
+
+| Método | Rota | Descrição |
+| --- | --- | --- |
+| `POST` | `/api/auth/register` | Cria a conta (`name`, `email`, `password` de 8 caracteres a 72 bytes). `409` se o e-mail já existir. |
+| `POST` | `/api/auth/login` | Devolve `access_token`, `token_type` e `expires_in` (segundos). `401` se as credenciais forem inválidas. |
+| `GET` | `/api/auth/me` | Usuário do token. `401` sem token ou com token inválido/expirado. |
+
+Rotas privadas declaram `user: CurrentUser` e rotas públicas personalizáveis
+declaram `user: OptionalUser` (ambos de `app.core.security`).
+
+A API não inicia sem `JWT_SECRET`, lido do terminal ou do `.env` como as demais
+configurações (tabela acima). Sem ele, o `start.sh` gera um segredo temporário e
+os logins expiram a cada reinício; defina-o no `.env` para manter as sessões.
+`JWT_EXPIRE_MINUTES` controla a validade do token.
 
 ## Repositório de espaços
 
