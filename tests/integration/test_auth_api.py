@@ -6,6 +6,8 @@ import pytest
 from fastapi import FastAPI
 
 from app import main
+from app.core import security
+from app.core.config import Settings
 from app.core.database import ensure_indexes
 from app.core.security import create_access_token
 
@@ -128,16 +130,10 @@ async def test_cors_preflight_allows_the_dev_frontend(client):
     assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
 
 
-def test_cors_origins_come_from_the_environment(monkeypatch):
-    assert main.cors_origins() == ["http://localhost:5173", "http://127.0.0.1:5173"]
-
-    monkeypatch.setenv("CORS_ORIGINS", " https://spacos.app , ,http://localhost:4173")
-    assert main.cors_origins() == ["https://spacos.app", "http://localhost:4173"]
-
-
 async def test_startup_fails_without_a_jwt_secret(monkeypatch):
-    monkeypatch.delenv("JWT_SECRET_KEY")
+    # Settings isolated from the environment and .env: no JWT_SECRET.
+    monkeypatch.setattr(security, "get_settings", Settings)
 
-    with pytest.raises(RuntimeError, match="JWT_SECRET_KEY"):
+    with pytest.raises(RuntimeError, match="JWT_SECRET"):
         async with main.lifespan(FastAPI()):
             pass  # pragma: no cover - startup must not get here

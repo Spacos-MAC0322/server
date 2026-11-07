@@ -1,13 +1,14 @@
 """Password hashing, JWT access tokens and the FastAPI authentication dependencies.
 
-Settings come from the environment and are read on use, not at import:
-`JWT_SECRET_KEY` is required; `JWT_EXPIRE_MINUTES` defaults to one day.
+Settings come from `app.core.config` (environment or `server/.env`) and are
+loaded once by `configure_security()`, which the API calls at startup:
+`JWT_SECRET` is required; `JWT_EXPIRE_MINUTES` defaults to one day.
 
 Private routes declare `user: CurrentUser`; public routes that only personalize
 their answer declare `user: OptionalUser`, which is `None` for visitors.
 """
 
-import os
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 
@@ -17,34 +18,42 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from ..repositories.user_repository import UserRepository, get_user_repository
+from .config import Settings, get_settings
 
 JWT_ALGORITHM = "HS256"
-DEFAULT_EXPIRE_MINUTES = 24 * 60
 BCRYPT_ROUNDS = 12
 
 NOT_AUTHENTICATED = "Não autenticado."
 INVALID_SESSION = "Sessão inválida ou expirada. Faça login novamente."
 
 
-def _secret_key() -> str:
-    secret = os.environ.get("JWT_SECRET_KEY")
-    if not secret:
-        raise RuntimeError("JWT_SECRET_KEY is required to sign access tokens.")
-    return secret
+@dataclass(frozen=True)
+class _JWTConfig:
+    secret: str
+    expire_minutes: int
 
 
-def _expire_minutes() -> int:
-    value = os.environ.get("JWT_EXPIRE_MINUTES", "")
-    minutes = int(value) if value else DEFAULT_EXPIRE_MINUTES
-    if minutes <= 0:
-        raise RuntimeError("JWT_EXPIRE_MINUTES must be a positive integer.")
-    return minutes
+_jwt_config: _JWTConfig | None = None
 
 
-def validate_security_settings() -> None:
-    """Fail at startup, rather than at the first login, on missing settings."""
-    _secret_key()
-    _expire_minutes()
+def configure_security(settings: Settings | None = None) -> None:
+    """Load the JWT settings once; the API fails at startup without a secret."""
+    global _jwt_config
+    settings = settings if settings is not None else get_settings()
+    if settings.jwt_secret is None:
+        raise RuntimeError("JWT_SECRET is required to sign access tokens.")
+    _jwt_config = _JWTConfig(
+        secret=settings.jwt_secret.get_secret_value(),
+        expire_minutes=settings.jwt_expire_minutes,
+    )
+
+
+def _config() -> _JWTConfig:
+    # Code that runs without the API lifespan (scripts) configures on first use.
+    if _jwt_config is None:
+        configure_security()
+    assert _jwt_config is not None
+    return _jwt_config
 
 
 def hash_password(password: str) -> str:
@@ -65,10 +74,10 @@ def create_access_token(
 ) -> tuple[str, int]:
     """Sign a token for `user_id`; returns it with its lifetime in seconds."""
     if expires_delta is None:
-        expires_delta = timedelta(minutes=_expire_minutes())
+        expires_delta = timedelta(minutes=_config().expire_minutes)
     now = datetime.now(UTC)
     payload = {"sub": user_id, "iat": now, "exp": now + expires_delta}
-    token = jwt.encode(payload, _secret_key(), algorithm=JWT_ALGORITHM)
+    token = jwt.encode(payload, _config().secret, algorithm=JWT_ALGORITHM)
     return token, int(expires_delta.total_seconds())
 
 
@@ -77,7 +86,7 @@ def decode_access_token(token: str) -> str | None:
     try:
         payload = jwt.decode(
             token,
-            _secret_key(),
+            _config().secret,
             algorithms=[JWT_ALGORITHM],
             options={"require": ["sub", "exp"]},
         )

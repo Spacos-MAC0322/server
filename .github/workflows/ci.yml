@@ -1,0 +1,49 @@
+name: Backend CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Tests (Python ${{ matrix.python-version }})
+    # Temporary: MongoDB 8.0 rejects kernels 6.19 through 7.0.13.
+    # The ubuntu-22.04 runner currently uses kernel 6.8 (SERVER-121912).
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+    services:
+      mongodb:
+        image: mongo:8.0
+        ports:
+          - "27017:27017"
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ ping: 1 })'"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      CI: "true"
+      MONGODB_TEST_URI: mongodb://localhost:27017
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install backend and test dependencies
+        run: python -m pip install -e '.[test,lint]'
+      - name: Lint
+        run: python -m ruff check .
+      - name: Unit tests (no live external APIs)
+        run: python -m pytest -m 'not integration'
+      - name: Integration tests (real MongoDB, combined coverage)
+        run: python -m pytest -m integration --cov-append

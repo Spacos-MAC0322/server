@@ -6,19 +6,23 @@ import jwt
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+from pydantic import ValidationError
 
 from app.core import security
+from app.core.config import Settings
 from app.core.database import ensure_indexes
 from app.core.security import (
     CurrentUser,
     OptionalUser,
+    configure_security,
     create_access_token,
     decode_access_token,
     hash_password,
-    validate_security_settings,
     verify_password,
 )
 from app.repositories.user_repository import UserRepository, get_user_repository
+
+from ..conftest import TEST_JWT_SECRET
 
 
 def test_hash_round_trip():
@@ -37,8 +41,8 @@ def test_verify_rejects_malformed_hashes_and_oversized_passwords():
     assert not verify_password("x" * 73, hashed)
 
 
-def test_token_round_trip_reports_lifetime(monkeypatch):
-    monkeypatch.setenv("JWT_EXPIRE_MINUTES", "30")
+def test_token_round_trip_reports_lifetime():
+    configure_security(Settings(jwt_secret=TEST_JWT_SECRET, jwt_expire_minutes=30))
 
     token, expires_in = create_access_token("user-1")
 
@@ -61,14 +65,11 @@ def test_default_lifetime_is_one_day():
             id="other-secret",
         ),
         pytest.param(
-            jwt.encode({"exp": 9999999999}, "test-secret-key-with-at-least-32-bytes"),
+            jwt.encode({"exp": 9999999999}, TEST_JWT_SECRET),
             id="missing-subject",
         ),
         pytest.param(
-            jwt.encode(
-                {"sub": "", "exp": 9999999999},
-                "test-secret-key-with-at-least-32-bytes",
-            ),
+            jwt.encode({"sub": "", "exp": 9999999999}, TEST_JWT_SECRET),
             id="empty-subject",
         ),
     ],
@@ -87,17 +88,22 @@ def test_decode_rejects_expired_and_tampered_tokens():
     assert decode_access_token(tampered) is None
 
 
-def test_settings_are_validated(monkeypatch):
-    validate_security_settings()
+def test_secret_is_required_and_settings_are_validated():
+    with pytest.raises(ValidationError, match="jwt_expire_minutes"):
+        Settings(jwt_secret=TEST_JWT_SECRET, jwt_expire_minutes=0)
+    with pytest.raises(ValidationError, match="32 characters"):
+        Settings(jwt_secret="short")
+    with pytest.raises(RuntimeError, match="JWT_SECRET"):
+        configure_security(Settings())
 
-    monkeypatch.setenv("JWT_EXPIRE_MINUTES", "0")
-    with pytest.raises(RuntimeError, match="JWT_EXPIRE_MINUTES"):
-        validate_security_settings()
 
-    monkeypatch.delenv("JWT_EXPIRE_MINUTES")
-    monkeypatch.delenv("JWT_SECRET_KEY")
-    with pytest.raises(RuntimeError, match="JWT_SECRET_KEY"):
-        create_access_token("user-1")
+def test_settings_load_on_first_use_without_the_api_lifespan(monkeypatch):
+    settings = Settings(jwt_secret=TEST_JWT_SECRET, jwt_expire_minutes=5)
+    monkeypatch.setattr(security, "get_settings", lambda: settings)
+
+    _, expires_in = create_access_token("user-1")
+
+    assert expires_in == 5 * 60
 
 
 @pytest.fixture
