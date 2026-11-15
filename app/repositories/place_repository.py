@@ -1,10 +1,19 @@
 """Persistence and map-area queries for normalized places."""
 
-import math
 from collections.abc import Callable, Iterable, Mapping
+from sys import float_info
 from typing import Any
 
 from pymongo.asynchronous.database import AsyncDatabase
+
+
+def _validate_coordinate(name: str, value: float, limit: int) -> None:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not -limit <= value <= limit
+    ):
+        raise ValueError(f"{name} must be finite and within [-{limit}, {limit}]")
 
 
 class PlaceRepository:
@@ -135,6 +144,34 @@ class PlaceRepository:
         """Return storage documents of every status, ordered by stable identity."""
         return await self.collection.find({}).sort("_id", 1).to_list()
 
+    async def find_nearby(
+        self, lat: float, lng: float, radius_meters: float
+    ) -> list[dict]:
+        """Return places within the radius, ordered by increasing distance.
+
+        The location_2dsphere index uses GeoJSON coordinates [lng, lat]. As in
+        find_in_bounds, the caller applies publication filters when needed.
+        """
+        _validate_coordinate("lat", lat, 90)
+        _validate_coordinate("lng", lng, 180)
+        if (
+            isinstance(radius_meters, bool)
+            or not isinstance(radius_meters, (int, float))
+            or not 0 <= radius_meters <= float_info.max
+        ):
+            raise ValueError("radius_meters must be finite and nonnegative")
+
+        return await self.collection.find(
+            {
+                "location": {
+                    "$nearSphere": {
+                        "$geometry": {"type": "Point", "coordinates": [lng, lat]},
+                        "$maxDistance": float(radius_meters),
+                    }
+                }
+            }
+        ).to_list()
+
     async def find_in_bounds(
         self,
         sw_lat: float,
@@ -155,15 +192,7 @@ class PlaceRepository:
             ("sw_lng", sw_lng, 180),
             ("ne_lng", ne_lng, 180),
         ):
-            if (
-                isinstance(value, bool)
-                or not isinstance(value, (int, float))
-                or not math.isfinite(value)
-                or not -limit <= value <= limit
-            ):
-                raise ValueError(
-                    f"{name} must be finite and within [-{limit}, {limit}]"
-                )
+            _validate_coordinate(name, value, limit)
         if sw_lat >= ne_lat or sw_lng >= ne_lng:
             raise ValueError("Southwest bounds must be below northeast bounds")
         if ne_lng - sw_lng >= 180:

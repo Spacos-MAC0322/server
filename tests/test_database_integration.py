@@ -53,6 +53,37 @@ async def test_repository_bounds_on_real_geojson_and_reimport(real_db):
     assert "location_2dsphere" in await real_db.places.index_information()
 
 
+async def test_repository_nearby_applies_radius_and_keeps_distance_order(real_db):
+    await initialize_database(real_db)
+    repository = PlaceRepository(real_db)
+    await repository.upsert_many(
+        [
+            {
+                "_id": identity,
+                "name": identity,
+                "source_keys": [f"test:{identity}"],
+                "sources": [{"provider": "test", "external_id": identity}],
+                "location": {"type": "Point", "coordinates": coords}
+                if coords
+                else None,
+            }
+            for identity, coords in (
+                ("a-farther", [-46.63, -23.553]),
+                ("b-outside", [-46.63, -23.56]),
+                ("unknown", None),
+                ("z-center", [-46.63, -23.55]),
+                ("y-near", [-46.631, -23.55]),
+            )
+        ]
+    )
+
+    places = await repository.find_nearby(-23.55, -46.63, 500)
+    assert [place["_id"] for place in places] == ["z-center", "y-near", "a-farther"]
+    center = await repository.find_nearby(-23.55, -46.63, 0)
+    assert [place["_id"] for place in center] == ["z-center"]
+    assert await repository.find_nearby(-24, -47, 500) == []
+
+
 async def test_repository_records_partial_sync_after_mongo_validation_error(real_db):
     await initialize_database(real_db)
     record = {
