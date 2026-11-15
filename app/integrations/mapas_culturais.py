@@ -1,29 +1,52 @@
-"""Read public spaces without coupling the external API to MongoDB."""
+"""Read public spaces and events without coupling the API to MongoDB."""
 
+import asyncio
 import json
+import logging
 import math
 import re
 import unicodedata
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from urllib.parse import urlparse
+from zoneinfo import ZoneInfo
 
 import httpx
 
+from app.core.cache import ResponseCache, make_cache_key
 from app.core.config import Settings, get_settings
 from app.core.exceptions import (
     ExternalServiceInvalidResponse,
     ExternalServiceTimeout,
     ExternalServiceUnavailable,
 )
+from app.core.http_client import (
+    ExternalAPIClient,
+    ExternalAPIError,
+    ExternalAPIResponseError,
+    RetryPolicy,
+    create_http_client,
+)
 
+logger = logging.getLogger(__name__)
 SERVICE = "mapas_culturais"
 SPACE_FIELDS = (
     "id,name,type,shortDescription,longDescription,location,public,endereco,"
     "En_CEP,En_Bairro,En_Municipio,telefonePublico,site,horario,preco,"
     "acessibilidade,acessibilidade_fisica,updateTimestamp,status"
 )
+SAO_PAULO = ZoneInfo("America/Sao_Paulo")
+EVENTS_PATH = "/api/event/findBySpace"
+EVENTS_LOOKAHEAD_DAYS = 30
+EVENTS_TIMEOUT_SECONDS = 10
+EVENTS_RETRY = RetryPolicy(
+    max_attempts=2,
+    total_timeout=EVENTS_TIMEOUT_SECONDS,
+    statuses=RetryPolicy().statuses | {408, 500},
+)
+_events_cache = ResponseCache(ttl=300)
+_events_fallback = ResponseCache(ttl=3600)
 
 
 @dataclass(frozen=True)
@@ -91,9 +114,7 @@ def normalize_space(record: dict, base_url: str) -> dict | None:
     try:
         stamp = datetime.fromisoformat(updated.replace("Z", "+00:00"))
         if stamp.tzinfo is None:
-            from zoneinfo import ZoneInfo
-
-            stamp = stamp.replace(tzinfo=ZoneInfo("America/Sao_Paulo"))
+            stamp = stamp.replace(tzinfo=SAO_PAULO)
     except (AttributeError, ValueError, TypeError):
         pass
     price = record.get("preco")
@@ -153,6 +174,65 @@ class MapasCulturaisClient:
     def __init__(self, settings: Settings | None = None, *, transport=None):
         self.settings = settings or get_settings()
         self.transport = transport
+
+    async def fetch_events_by_space(self, space_id: int | str) -> list[dict]:
+        """Return public events with occurrences from today through the next 30 days.
+
+        Use the numeric ID from the configured Mapas Culturais instance. Today
+        is calculated in São Paulo. On failure, use the last complete response
+        for the same instance, space and interval (up to one hour), or return [].
+        """
+        if not isinstance(space_id, (int, str)) or not re.fullmatch(
+            r"[1-9][0-9]*", str(space_id)
+        ):
+            raise ValueError("space_id must be a positive Mapas Culturais ID")
+        if not self.settings.mapas_culturais_enabled:
+            return []
+
+        today = datetime.now(SAO_PAULO).date()
+        base = str(self.settings.mapas_culturais_base_url).rstrip("/")
+        params = {
+            "spaceId": str(space_id),
+            "@from": today.isoformat(),
+            "@to": (today + timedelta(days=EVENTS_LOOKAHEAD_DAYS)).isoformat(),
+            "@select": "id,name,shortDescription,terms,singleUrl,status",
+            "@type": "json",
+            "status": "EQ(1)",
+        }
+        key = make_cache_key(f"{base}{EVENTS_PATH}", params)
+        if (cached := _events_cache.get(key)) is not None:
+            return json.loads(cached)
+
+        try:
+            async with (
+                asyncio.timeout(EVENTS_TIMEOUT_SECONDS),
+                create_http_client(
+                    transport=self.transport,
+                    headers={"Accept": "application/json", "User-Agent": "Spacos/0.1"},
+                ) as client,
+            ):
+                api = ExternalAPIClient(
+                    client,
+                    SERVICE,
+                    base_url=base,
+                    timeout=self.settings.external_api_timeout_seconds,
+                    retry=EVENTS_RETRY,
+                )
+                events = await _event_pages(api, params)
+        except (ExternalAPIError, TimeoutError) as error:
+            fallback = _events_fallback.get(key)
+            logger.warning(
+                "Mapas Culturais agenda unavailable for space %s (%s, cached=%s)",
+                space_id,
+                type(error).__name__,
+                fallback is not None,
+            )
+            return json.loads(fallback) if fallback is not None else []
+
+        body = json.dumps(events).encode()
+        _events_cache.set(key, body)
+        _events_fallback.set(key, body)
+        return events
 
     async def iter_space_pages(
         self, *, page_size: int = 100
@@ -232,3 +312,46 @@ class MapasCulturaisClient:
 async def fetch_spaces(**kwargs) -> list[dict]:
     """Convenience entry point using the existing environment settings."""
     return await MapasCulturaisClient().fetch_spaces(**kwargs)
+
+
+async def _event_pages(api: ExternalAPIClient, params: dict[str, str]) -> list[dict]:
+    events = []
+    seen = set()
+    page = 1
+    while True:
+        rows = await api.get_json(
+            EVENTS_PATH,
+            params={**params, "@limit": 100, "@page": page, "@order": "id ASC"},
+        )
+        if not isinstance(rows, list):
+            raise ExternalAPIResponseError(SERVICE, "Expected a list of events")
+        if not rows:
+            return events
+
+        previous_count = len(seen)
+        for event in rows:
+            if (
+                not isinstance(event, dict)
+                or type(event.get("id")) is not int
+                or type(event.get("status")) is not int
+                or not text(event.get("name"))
+            ):
+                raise ExternalAPIResponseError(SERVICE, "Invalid event record")
+            if event["id"] in seen:
+                continue
+            seen.add(event["id"])
+            if event["status"] != 1:
+                continue
+            occurrences = event.get("occurrences")
+            # PHP can serialize filtered arrays with sparse keys as JSON objects.
+            if isinstance(occurrences, dict):
+                occurrences = list(occurrences.values())
+            if not isinstance(occurrences, list) or not all(
+                isinstance(item, dict) for item in occurrences
+            ):
+                raise ExternalAPIResponseError(SERVICE, "Invalid event occurrences")
+            if occurrences:
+                events.append({**event, "occurrences": occurrences})
+        if len(seen) == previous_count:
+            raise ExternalAPIResponseError(SERVICE, "Repeated event page")
+        page += 1
