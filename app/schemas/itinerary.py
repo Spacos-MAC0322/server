@@ -3,9 +3,35 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 from app.integrations.open_meteo import WeatherForecast
+
+
+class ItineraryStopSchema(BaseModel):
+    """A visit with optional planned times, including stops stored before planning."""
+
+    place_id: str
+    order: int = Field(strict=True)
+    planned_start_time: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("planned_start_time", "arrival_time"),
+    )
+    planned_end_time: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("planned_end_time", "departure_time"),
+    )
+    conflict_warning: str | None = None
+
+
+class ItinerarySchema(BaseModel):
+    """Complete itinerary with owner and typed stops."""
+
+    id: str = Field(validation_alias=AliasChoices("id", "_id"))
+    user_id: str
+    title: str
+    date: str | None = None
+    stops: list[ItineraryStopSchema]
 
 
 class BusLineSchema(BaseModel):
