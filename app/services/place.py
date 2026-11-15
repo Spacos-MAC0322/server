@@ -19,6 +19,7 @@ from app.schemas.place import (
     PlaceListQuery,
     PlaceSummarySchema,
 )
+from app.services.curation import rank_places
 
 
 class PlaceService:
@@ -53,8 +54,12 @@ class PlaceService:
         documents = await self.repository.find_nearby(lat, lng, radius_km * 1000)
         return await self._summarize_visible_places(documents)
 
+    async def discover_places(self) -> list[PlaceSummarySchema]:
+        documents = await self.repository.find_all()
+        return await self._summarize_visible_places(documents, curated_only=True)
+
     async def _summarize_visible_places(
-        self, documents: list[dict]
+        self, documents: list[dict], *, curated_only: bool = False
     ) -> list[PlaceSummarySchema]:
         visible = [
             doc
@@ -64,6 +69,9 @@ class PlaceService:
             and doc.get("data_quality", {}).get("location_valid") is not False
         ]
         curations = await self.repository.find_curations(doc["_id"] for doc in visible)
+        if curated_only:
+            ranked = rank_places(visible, curations=curations)
+            visible = [doc for doc in ranked if doc["curation_score"] > 0]
         return [
             PlaceSummarySchema.from_mongo(doc, curation=curations.get(doc["_id"]))
             for doc in visible
