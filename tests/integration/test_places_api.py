@@ -94,6 +94,45 @@ async def test_places_api_reads_public_pins_with_real_bounds_and_curation(
     assert empty.json() == []
 
 
+async def test_nearby_places_api_filters_radius_and_visibility_in_distance_order(
+    real_db, places_client
+):
+    for identity, longitude, status, is_valid in (
+        ("a-farther", -46.633, "published", True),
+        ("b-outside", -46.64, "published", True),
+        ("hidden", -46.63, "hidden", True),
+        ("invalid-location", -46.63, "published", False),
+        ("z-nearest", -46.63, "published", True),
+    ):
+        await real_db.places.insert_one(
+            {
+                "_id": identity,
+                "name": identity,
+                "publication_status": status,
+                "source_keys": [f"test:{identity}"],
+                "sources": [{"provider": "test", "external_id": identity}],
+                "location": {"type": "Point", "coordinates": [longitude, -23.55]},
+                "data_quality": {"location_valid": is_valid},
+            }
+        )
+    await real_db.place_curations.insert_one(
+        {"_id": "nearby-curation", "place_id": "z-nearest", "family_friendly": True}
+    )
+
+    query = {"lat": -23.55, "lng": -46.63, "radius_km": 0.5}
+    response = await places_client.get("/api/places/nearby", params=query)
+
+    assert response.status_code == 200
+    assert [place["id"] for place in response.json()] == ["z-nearest", "a-farther"]
+    assert response.json()[0]["badges"]["family_friendly"] is True
+
+    same_point = await places_client.get(
+        "/api/places/nearby", params={**query, "radius_km": 0}
+    )
+    assert same_point.status_code == 200
+    assert [place["id"] for place in same_point.json()] == ["z-nearest"]
+
+
 async def test_mocked_adapter_to_database_to_public_endpoint(real_db, places_client):
     # A fresh, isolated database starts with an empty public listing.
     assert (await places_client.get("/api/places")).json() == []

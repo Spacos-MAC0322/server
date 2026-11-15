@@ -1,5 +1,6 @@
 """Read-only endpoints for cultural places and their programming."""
 
+from sys import float_info
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -40,6 +41,34 @@ async def get_places(
         raise HTTPException(
             status_code=503,
             detail="Não foi possível consultar os espaços no momento.",
+        ) from None
+
+
+@router.get(
+    "/nearby",
+    response_model=list[PlaceSummarySchema],
+    summary="Buscar espaços culturais próximos",
+    description=(
+        "Busca espaços publicados dentro de um raio em quilômetros, "
+        "do mais próximo ao mais distante. Raio zero retorna apenas espaços "
+        "exatamente na coordenada informada."
+    ),
+    responses={503: {"description": "Banco de dados temporariamente indisponível"}},
+)
+async def get_nearby_places(
+    lat: Annotated[float, Query(ge=-90, le=90, allow_inf_nan=False)],
+    lng: Annotated[float, Query(ge=-180, le=180, allow_inf_nan=False)],
+    radius_km: Annotated[
+        float, Query(ge=0, le=float_info.max / 1000, allow_inf_nan=False)
+    ],
+    service: Annotated[PlaceService, Depends(get_place_service)],
+) -> list[PlaceSummarySchema]:
+    try:
+        return await service.list_nearby_places(lat, lng, radius_km)
+    except PyMongoError:
+        raise HTTPException(
+            status_code=503,
+            detail="Não foi possível consultar os espaços próximos no momento.",
         ) from None
 
 

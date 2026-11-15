@@ -45,6 +45,17 @@ class PlaceService:
             documents = await self.repository.find_all()
         else:
             documents = await self.repository.find_in_bounds(*bounds)
+        return await self._summarize_visible_places(documents)
+
+    async def list_nearby_places(
+        self, lat: float, lng: float, radius_km: float
+    ) -> list[PlaceSummarySchema]:
+        documents = await self.repository.find_nearby(lat, lng, radius_km * 1000)
+        return await self._summarize_visible_places(documents)
+
+    async def _summarize_visible_places(
+        self, documents: list[dict]
+    ) -> list[PlaceSummarySchema]:
         visible = [
             doc
             for doc in documents

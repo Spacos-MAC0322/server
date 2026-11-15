@@ -34,6 +34,43 @@ async def test_empty_listing_returns_json_array(client):
     assert response.json() == []
 
 
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"lat": 91},
+        {"lng": "nan"},
+        {"radius_km": -1},
+        {"radius_km": "inf"},
+        {"radius_km": 1e308},
+    ],
+)
+async def test_nearby_rejects_invalid_query_before_lookup(client, monkeypatch, change):
+    lookup = AsyncMock()
+    monkeypatch.setattr(PlaceRepository, "find_nearby", lookup)
+
+    response = await client.get(
+        "/api/places/nearby",
+        params={"lat": -23.55, "lng": -46.63, "radius_km": 1, **change},
+    )
+
+    assert response.status_code == 422
+    lookup.assert_not_awaited()
+
+
+async def test_nearby_returns_503_when_repository_is_unavailable(client, monkeypatch):
+    monkeypatch.setattr(
+        PlaceRepository,
+        "find_nearby",
+        AsyncMock(side_effect=AutoReconnect("database unavailable")),
+    )
+
+    response = await client.get(
+        "/api/places/nearby", params={"lat": -23.55, "lng": -46.63, "radius_km": 1}
+    )
+
+    assert response.status_code == 503
+
+
 async def test_published_place_detail_joins_stored_data_and_events(
     client, db, monkeypatch
 ):
