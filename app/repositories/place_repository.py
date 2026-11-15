@@ -13,6 +13,14 @@ class PlaceRepository:
         self.collection = database.places
         self.curations = database.place_curations
 
+    async def find_published_by_id(self, place_id: str) -> dict | None:
+        return await self.collection.find_one(
+            {"_id": place_id, "publication_status": "published"}
+        )
+
+    async def find_curation(self, place_id: str) -> dict | None:
+        return await self.curations.find_one({"place_id": place_id})
+
     async def find_curations(self, place_ids: Iterable[str]) -> dict[str, dict]:
         """Read badge flags in one batch; full curation evidence stays in MongoDB."""
         identities = list(dict.fromkeys(place_ids))

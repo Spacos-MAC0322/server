@@ -68,6 +68,15 @@ def fold(value):
     ).casefold()
 
 
+def provider_for_url(base_url: str) -> str:
+    host = urlparse(base_url).hostname
+    return (
+        "mapas_saas"
+        if host == "saas.mapas.cultura.gov.br"
+        else f"mapas_culturais:{host}"
+    )
+
+
 def normalize_space(record: dict, base_url: str) -> dict | None:
     """Keep city-confirmed records; unknown visit details are never inferred."""
     identifier, name = record.get("id"), text(record.get("name"))
@@ -97,12 +106,7 @@ def normalize_space(record: dict, base_url: str) -> dict | None:
                     point = {"type": "Point", "coordinates": [lon, lat]}
         except (KeyError, ValueError, TypeError, OverflowError):
             pass
-    host = urlparse(base_url).hostname
-    provider = (
-        "mapas_saas"
-        if host == "saas.mapas.cultura.gov.br"
-        else f"mapas_culturais:{host}"
-    )
+    provider = provider_for_url(base_url)
     identity = f"{provider}:space:{identifier}"
     category = record.get("type")
     category = (
@@ -195,7 +199,10 @@ class MapasCulturaisClient:
             "spaceId": str(space_id),
             "@from": today.isoformat(),
             "@to": (today + timedelta(days=EVENTS_LOOKAHEAD_DAYS)).isoformat(),
-            "@select": "id,name,shortDescription,terms,singleUrl,status",
+            "@select": (
+                "id,name,shortDescription,longDescription,classificacaoEtaria,"
+                "terms,singleUrl,status"
+            ),
             "@type": "json",
             "status": "EQ(1)",
         }
