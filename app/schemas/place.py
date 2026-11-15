@@ -280,6 +280,10 @@ class PlaceDetailSchema(PlaceSummarySchema):
     accessibility: PlaceAccessibilitySchema = Field(
         default_factory=PlaceAccessibilitySchema
     )
+    is_independent: StrictBool | None = None
+    region_zone: Literal["Centro", "Sul", "Leste", "Norte", "Oeste"] | None = None
+    community_center: StrictBool | None = None
+    curation_score: float | None = Field(default=None, strict=True, allow_inf_nan=False)
     visit_duration_minutes: int | None = None
     events: list[EventSchema] = Field(default_factory=list)
     sources: list[PlaceSourceSchema] = Field(default_factory=list)
