@@ -14,7 +14,13 @@ from app.core.http_client import get_http_client
 from app.integrations.open_meteo import OpenMeteoClient
 from app.integrations.sptrans import SPTransClient
 from app.repositories.itinerary_repository import ItineraryRepository
-from app.schemas.itinerary import ItineraryResponse, TransitLegSchema, WeatherResponse
+from app.schemas.itinerary import (
+    ItineraryResponse,
+    ItineraryStopSchema,
+    ItineraryValidationRequest,
+    TransitLegSchema,
+    WeatherResponse,
+)
 from app.services.itinerary_planner import ItineraryPlanner
 
 router = APIRouter(prefix="/api/itineraries", tags=["itineraries"])
@@ -93,6 +99,38 @@ async def get_transit(
         ]
     )
     return legs[0]
+
+
+@router.post(
+    "/validate",
+    response_model=list[ItineraryStopSchema],
+    summary="Validar horários das paradas de um roteiro",
+    description=(
+        "Recebe a data e as paradas na ordem da visita. Devolve a mesma sequência "
+        "com conflict_warning quando o local estiver fechado no horário de início. "
+        "O horário é local de São Paulo. A validação consulta os horários semanais "
+        "cadastrados e não salva o roteiro."
+    ),
+    responses={503: {"description": "Banco de dados temporariamente indisponível"}},
+)
+async def validate_itinerary(
+    draft: ItineraryValidationRequest,
+    planner: Annotated[ItineraryPlanner, Depends(get_itinerary_planner)],
+    repository: Annotated[ItineraryRepository, Depends(get_itinerary_repository)],
+) -> list[dict]:
+    itinerary = {
+        "date": draft.date.isoformat(),
+        "stops": [
+            stop.model_dump(exclude={"conflict_warning"}) for stop in draft.stops
+        ],
+    }
+    try:
+        checked = await planner.attach_opening_hours_conflicts(itinerary, repository)
+    except PyMongoError:
+        raise HTTPException(
+            status_code=503, detail="Não foi possível validar os horários no momento."
+        ) from None
+    return checked["stops"]
 
 
 @router.get(

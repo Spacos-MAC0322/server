@@ -1,9 +1,11 @@
 """Read contracts for itineraries and optional daily weather."""
 
+import re
+from datetime import date as Date
 from datetime import datetime
 from typing import Any
 
-from pydantic import AliasChoices, BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field, field_validator
 
 from app.integrations.open_meteo import WeatherForecast
 
@@ -32,6 +34,22 @@ class ItinerarySchema(BaseModel):
     title: str
     date: str | None = None
     stops: list[ItineraryStopSchema]
+
+
+class ItineraryValidationStop(ItineraryStopSchema):
+    @field_validator("planned_start_time", "planned_end_time")
+    @classmethod
+    def validate_local_time(cls, value: str | None) -> str | None:
+        if value is not None and not re.fullmatch(
+            r"(?:[01][0-9]|2[0-3]):[0-5][0-9](?::[0-5][0-9])?", value
+        ):
+            raise ValueError("Informe um horário no formato HH:MM ou HH:MM:SS.")
+        return value
+
+
+class ItineraryValidationRequest(BaseModel):
+    date: Date
+    stops: list[ItineraryValidationStop]
 
 
 class BusLineSchema(BaseModel):
