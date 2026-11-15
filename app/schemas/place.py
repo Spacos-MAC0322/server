@@ -249,6 +249,18 @@ class PlaceSummarySchema(ReadSchema):
         return cls.model_validate(data)
 
 
+class EventSchema(ReadSchema):
+    """An event occurrence at the place with its public schedule and details."""
+
+    title: str = Field(min_length=1)
+    starts_at: datetime | str | None = None
+    ends_at: datetime | str | None = None
+    schedule_text: str | None = None
+    price_text: str | None = None
+    age_rating: str | None = None
+    description: PlaceDescriptionSchema = Field(default_factory=PlaceDescriptionSchema)
+
+
 class PlaceDetailSchema(PlaceSummarySchema):
     type: str | None = None
     categories: list[str] = Field(default_factory=list)
@@ -269,6 +281,7 @@ class PlaceDetailSchema(PlaceSummarySchema):
         default_factory=PlaceAccessibilitySchema
     )
     visit_duration_minutes: int | None = None
+    events: list[EventSchema] = Field(default_factory=list)
     sources: list[PlaceSourceSchema] = Field(default_factory=list)
     data_quality: PlaceDataQualitySchema = Field(default_factory=PlaceDataQualitySchema)
     curation: PlaceCurationSchema | None = None
