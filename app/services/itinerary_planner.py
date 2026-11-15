@@ -1,11 +1,13 @@
-"""Itinerary weather and travel estimates, independent of persistence."""
+"""Itinerary weather, travel estimates and opening hours checks."""
 
 import asyncio
 import logging
 import math
+import re
+import unicodedata
 from collections.abc import Mapping, Sequence
 from datetime import date as Date
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from itertools import pairwise
 from typing import Any
 from zipfile import BadZipFile
@@ -26,6 +28,21 @@ SAO_PAULO_LNG = -46.6333
 FORECAST_DAYS = 16
 WEATHER_TIMEOUT_SECONDS = 5
 TRANSIT_TIMEOUT_SECONDS = 5
+CLOSED_WARNING = "O local estará fechado no horário planejado."
+WEEKDAYS = ("segunda", "terca", "quarta", "quinta", "sexta", "sabado", "domingo")
+DAY = rf"(?:{'|'.join(WEEKDAYS)})s?(?:[- ]feiras?)?\b"
+DAY_LIST = rf"{DAY}(?:(?:\s*,\s*|\s+(?:a|ate|e)\s+){DAY})*"
+DAY_SELECTOR = rf"(?:{DAY_LIST}|diariamente|todos os dias)"
+CLOCK = r"\d{1,2}(?::\d{2}|h\d{0,2})?"
+TIME_RANGE = re.compile(rf"({CLOCK})\s*(?:as|a|-)\s*({CLOCK})(?:\s+horas?)?")
+HOURS_CLAUSE = re.compile(
+    rf"(?:de\s+)?(?P<days>{DAY_SELECTOR})(?:\s+e feriados)?"
+    r"\s*[:, -]*\s*(?:das\s+)?(?P<hours>.+)"
+)
+CLOSED_CLAUSE = re.compile(
+    rf"(?P<days>{DAY_SELECTOR})\s*[:-]\s*fechad[oa]s?|"
+    rf"fechad[oa]s?\s+(?:as?\s+)?(?P<closed_days>{DAY_SELECTOR})"
+)
 
 
 def today_in_sao_paulo() -> Date:
@@ -157,9 +174,138 @@ class ItineraryPlanner:
         itinerary = await repository.find_by_id(itinerary_id)
         if itinerary is None:
             return None
+        itinerary = await self.attach_opening_hours_conflicts(itinerary, repository)
         itinerary = await self.attach_weather_forecast(itinerary)
         itinerary["id"] = itinerary.pop("_id")
         return itinerary
+
+    async def attach_opening_hours_conflicts(
+        self, itinerary: dict, repository: ItineraryRepository
+    ) -> dict:
+        """Evaluate visit start times in São Paulo using the weekly schedule."""
+        try:
+            day = Date.fromisoformat(itinerary["date"])
+        except (KeyError, ValueError, TypeError):
+            return itinerary
+
+        stops = itinerary["stops"]
+        visits = [
+            _visit_minutes(stop.get("planned_start_time", stop.get("arrival_time")))
+            for stop in stops
+        ]
+        place_ids = {
+            stop["place_id"]
+            for stop, start in zip(stops, visits, strict=True)
+            if start is not None and isinstance(stop.get("place_id"), str)
+        }
+        if not place_ids:
+            return itinerary
+
+        hours_by_place = await repository.find_opening_hours(place_ids)
+        schedules = {
+            place_id: _weekly_hours(hours.get("text"))
+            for place_id, hours in hours_by_place.items()
+        }
+        checked_stops = []
+        weekday = day.weekday()
+        for stop, start in zip(stops, visits, strict=True):
+            schedule = schedules.get(stop.get("place_id"))
+            if start is not None and schedule is not None and weekday in schedule:
+                is_open = any(begin <= start < end for begin, end in schedule[weekday])
+                if not is_open:
+                    stop = {**stop, "conflict_warning": CLOSED_WARNING}
+                elif stop.get("conflict_warning") == CLOSED_WARNING:
+                    stop = {**stop, "conflict_warning": None}
+            checked_stops.append(stop)
+        return {**itinerary, "stops": checked_stops}
+
+
+def _visit_minutes(value: object) -> float | None:
+    if not isinstance(value, str) or not re.fullmatch(r"\d{2}:\d{2}(?::\d{2})?", value):
+        return None
+    try:
+        clock = time.fromisoformat(value)
+    except ValueError:
+        return None
+    return clock.hour * 60 + clock.minute + clock.second / 60
+
+
+def _clock_minutes(value: str) -> int | None:
+    hour, _, minute = value.replace("h", ":").partition(":")
+    hours, minutes = int(hour), int(minute or 0)
+    if (hours < 24 and minutes < 60) or (hours, minutes) == (24, 0):
+        return hours * 60 + minutes
+    return None
+
+
+def _weekdays(selector: str) -> set[int]:
+    if selector in ("diariamente", "todos os dias"):
+        return set(range(7))
+    days = set()
+    for item in re.split(r"\s*,\s*|\s+e\s+", selector):
+        names = re.findall(rf"({'|'.join(WEEKDAYS)})", item)
+        first, last = WEEKDAYS.index(names[0]), WEEKDAYS.index(names[-1])
+        days.update((first + offset) % 7 for offset in range((last - first) % 7 + 1))
+    return days
+
+
+def _weekly_hours(text: object) -> dict[int, list[tuple[int, int]]] | None:
+    """Read common Mapas Culturais schedules, omitting ambiguous text."""
+    if not isinstance(text, str) or not text.strip():
+        return None
+    normalized = (
+        "".join(
+            char
+            for char in unicodedata.normalize("NFD", text.lower())
+            if not unicodedata.combining(char)
+        )
+        .replace("–", "-")
+        .replace("—", "-")
+    )
+    normalized = re.sub(
+        r"\b([2-6])ª\s*feira\b",
+        lambda match: WEEKDAYS[int(match[1]) - 2],
+        normalized,
+    )
+    clauses = [
+        clause
+        for raw in re.split(rf"[.;\n]+|\s+-\s+(?={DAY})", normalized.strip())
+        if (clause := raw.strip(" -()\t"))
+    ]
+    if not clauses:
+        return None
+    hours: dict[int, list[tuple[int, int]]] = {}
+    closed = set()
+    for clause in clauses:
+        if match := CLOSED_CLAUSE.fullmatch(clause):
+            closed.update(_weekdays(match["days"] or match["closed_days"]))
+            continue
+        match = HOURS_CLAUSE.fullmatch(clause)
+        if match is None:
+            return None
+        if not hours:
+            hours = {index: [] for index in range(len(WEEKDAYS))}
+        days = _weekdays(match["days"])
+        for period in re.split(r"\s*,\s*|\s+e\s+(?:das\s+)?", match["hours"].strip()):
+            interval = TIME_RANGE.fullmatch(period)
+            if interval is None:
+                return None
+            begin, end = map(_clock_minutes, interval.groups())
+            if begin is None or end is None or begin == 1440:
+                return None
+            if begin == end:
+                if begin != 0:
+                    return None
+                continue  # Mapas Culturais uses 00:00–00:00 on closed days.
+            for weekday in days:
+                if end < begin:
+                    hours[weekday].append((begin, 1440))
+                    hours[(weekday + 1) % 7].append((0, end))
+                else:
+                    hours[weekday].append((begin, end))
+    for weekday in closed:
+        hours[weekday] = []
+    return hours
 
 
 def _transit_place(place: Mapping[str, Any]) -> tuple[str, float, float, int]:
