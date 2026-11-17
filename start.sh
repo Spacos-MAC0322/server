@@ -71,7 +71,7 @@ fi
     die 'O ambiente selecionado precisa de Python 3.12 ou superior.'
 
 if ! "$PYTHON_BIN" -c \
-    'import fastapi, uvicorn, pytest, pytest_asyncio, pytest_cov, httpx, mongomock_motor, pydantic_settings, tenacity, cachetools; from pymongo import AsyncMongoClient' \
+    'import fastapi, uvicorn, pytest, pytest_asyncio, pytest_cov, httpx, mongomock_motor, pydantic_settings, tenacity, cachetools, bcrypt, jwt, email_validator; from pymongo import AsyncMongoClient' \
     >/dev/null 2>&1; then
     "$PYTHON_BIN" -m pip install -e '.[test]'
 fi
@@ -177,6 +177,17 @@ PY
 if [[ "$CHECK_ONLY" == 1 ]]; then
     log 'Banco inicializado e testes aprovados. A API nao foi iniciada (--check).'
     exit 0
+fi
+
+# JWT_SECRET pode vir do terminal ou do .env; so o resultado (0/1) e exposto aqui.
+JWT_SECRET_MISSING="$("$PYTHON_BIN" -c \
+    'from app.core.config import get_settings; print(int(get_settings().jwt_secret is None))')" ||
+    die 'Configuracao invalida. Verifique as variaveis de ambiente e o arquivo .env.'
+if [[ "${JWT_SECRET_MISSING//$'\r'/}" == 1 ]]; then
+    JWT_SECRET="$("$PYTHON_BIN" -c 'import secrets; print(secrets.token_urlsafe(32))')"
+    export JWT_SECRET
+    printf 'Aviso: JWT_SECRET nao definido no terminal nem no .env; usando um segredo temporario.\n'
+    printf 'Os logins expiram quando a API reiniciar. Defina JWT_SECRET no .env para manter as sessoes.\n'
 fi
 
 log "[5/5] Iniciando a API em http://$API_HOST:$API_PORT"

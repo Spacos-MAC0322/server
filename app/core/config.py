@@ -80,6 +80,7 @@ class Settings(StartupSettings):
     )
     auth_enabled: bool = False
     jwt_secret: SecretStr | None = None
+    jwt_expire_minutes: int = Field(default=24 * 60, gt=0)
     external_api_timeout_seconds: float = Field(default=10, gt=0, allow_inf_nan=False)
 
     mapas_culturais_enabled: bool = False
