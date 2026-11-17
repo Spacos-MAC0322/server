@@ -84,6 +84,7 @@ O `.env` é interpretado como dados, nunca executado como código de shell.
 | `MAPAS_CULTURAIS_ENABLED` / `MAPAS_CULTURAIS_BASE_URL` | Desabilitado; ao habilitar, exige URL HTTP(S) |
 | `GEOSAMPA_ENABLED` / `GEOSAMPA_BASE_URL` | Desabilitado; ao habilitar, exige URL HTTP(S) |
 | `SPTRANS_ENABLED` / `SPTRANS_BASE_URL` / `SPTRANS_TOKEN` | Desabilitado; ao habilitar, exige URL e token |
+| `SPTRANS_GTFS_PATH` | Caminho do ZIP GTFS oficial, usado para localizar paradas e estimar conexões diretas |
 | `OPEN_METEO_ENABLED` / `OPEN_METEO_BASE_URL` | Desabilitado; URL padrão `https://api.open-meteo.com` |
 
 Se os dois nomes da conexão estiverem definidos na mesma fonte, `MONGO_URI`
@@ -560,3 +561,66 @@ e consultas geoespaciais reais. A fixture `real_db`, compartilhada em
 `tests/conftest.py`, cria e remove um banco exclusivo por teste. Sem
 `MONGODB_TEST_URI` no ambiente ou `.env`, os testes de integração são ignorados
 apenas na execução local; a suíte em memória continua funcionando.
+
+## Integração SPTrans: paradas, linhas e conexões diretas
+
+O adaptador `app/integrations/sptrans.py` reutiliza o cliente HTTP, tratamento de
+erros e cache existentes. `authenticate()` faz login por token e mantém os cookies
+no mesmo cliente HTTP. Uma resposta `false` é tratada como falha de autenticação;
+uma consulta com HTTP 401 permite uma única renovação da sessão. O token fica
+somente no `.env`, que é ignorado pelo Git, e não aparece nas mensagens de erro.
+
+Configure `SPTRANS_BASE_URL=https://api.olhovivo.sptrans.com.br/v2.1`, o token e
+`SPTRANS_ENABLED=true`. Baixe o GTFS na área autenticada de desenvolvedores da
+SPTrans e configure `SPTRANS_GTFS_PATH` com o caminho do ZIP. Por exemplo, use
+`.dev/sptrans/gtfs.zip`; a pasta `.dev/` também é ignorada pelo Git. Atualize esse
+arquivo periodicamente conforme a publicação da SPTrans.
+
+Os métodos `search_lines(terms)`, `search_stops(terms)`,
+`get_line_stops(line_id)` e `get_arrival_predictions(stop_id)` consultam a Olho Vivo,
+com cache de 30 segundos. `find_nearby_stops(lat, lng, radius_m=500)` usa o GTFS,
+cuja cobertura não depende da busca de paradas de corredores da Olho Vivo.
+
+`find_connections(origin_lat, origin_lng, destination_lat, destination_lng)`
+retorna até três conexões **diretas**, sem baldeações, ordenadas pelo tempo total.
+O cálculo respeita a sequência das paradas, os dias de operação, as exceções de
+calendário, restrições de embarque/desembarque e serviços que passam da meia-noite.
+Inclui caminhada aproximada (distância em linha reta multiplicada por 1,3, a
+4,8 km/h), espera e duração no ônibus. Para viagens por frequência sem horários
+exatos, a espera estimada é metade do intervalo entre ônibus.
+
+Essas durações vêm do GTFS e **não incorporam trânsito em tempo real**. As previsões
+da Olho Vivo são informação complementar da parada, com seu próprio sentido de
+operação; não são presumidas como previsão do mesmo trajeto do GTFS. Se a API
+estiver desabilitada, recusar o token ou falhar, a conexão permanece disponível
+com `arrival_predictions=null` e um aviso. Nenhuma conexão direta resulta em `[]`.
+
+Exemplo de uso, executado a partir da pasta `server`:
+
+```python
+import asyncio
+import json
+
+from app.core.http_client import create_http_client
+from app.integrations.sptrans import SPTransClient
+
+
+async def main():
+    async with create_http_client() as http:
+        client = SPTransClient(http)
+        connections = await client.find_connections(
+            -23.592938, -46.672727,  # Próximo à Parada Afonso Braz
+            -23.5600, -46.6550,     # Região da Avenida Nove de Julho
+        )
+        print(json.dumps(connections, ensure_ascii=False, indent=2))
+
+
+asyncio.run(main())
+```
+
+Os testes de `tests/unit/test_sptrans.py` usam um GTFS pequeno e respostas HTTP
+simuladas; não precisam de token nem de acesso à internet:
+
+```powershell
+python -m pytest tests/unit/test_sptrans.py --no-cov -q
+```

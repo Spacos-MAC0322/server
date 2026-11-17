@@ -86,6 +86,36 @@ def test_detail_serializes_bson_and_nested_information(document):
     assert PlaceDetailSchema.model_validate_json(detail.model_dump_json()) == detail
 
 
+def test_place_detail_serializes_public_event_information(document):
+    document["events"] = [
+        {
+            "title": "Exposição temporária",
+            "starts_at": datetime(2026, 11, 28, 13, tzinfo=UTC),
+            "ends_at": datetime(2026, 11, 28, 20, tzinfo=UTC),
+            "schedule_text": "Das 10h às 17h",
+            "price_text": "Gratuito",
+            "age_rating": "Livre",
+            "description": {"short": "Obras selecionadas do acervo."},
+            "source_keys": ["internal:event:1"],
+        }
+    ]
+
+    detail = PlaceDetailSchema.from_mongo(document)
+
+    assert detail.model_dump(mode="json")["events"] == [
+        {
+            "title": "Exposição temporária",
+            "starts_at": "2026-11-28T13:00:00Z",
+            "ends_at": "2026-11-28T20:00:00Z",
+            "schedule_text": "Das 10h às 17h",
+            "price_text": "Gratuito",
+            "age_rating": "Livre",
+            "description": {"short": "Obras selecionadas do acervo.", "long": None},
+        }
+    ]
+    assert "events" not in PlaceSummarySchema.from_mongo(document).model_dump()
+
+
 def test_optional_curation_is_joined_explicitly_and_retains_unknowns(document):
     curation = {
         "_id": "curation-1",
@@ -143,6 +173,7 @@ def test_minimal_persisted_place_keeps_unknown_fields_unknown():
     detail.categories.append("Museu")
     other = PlaceDetailSchema(id="other", name="Outro")
     assert other.categories == []
+    assert detail.events == other.events == []
 
 
 @pytest.mark.parametrize(

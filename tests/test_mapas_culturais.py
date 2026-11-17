@@ -1,19 +1,148 @@
 from copy import deepcopy
+from dataclasses import replace
+from datetime import datetime
 from unittest.mock import AsyncMock
 
 import httpx
 import pytest
 
+from app.core.cache import ResponseCache
 from app.core.config import Settings
 from app.core.exceptions import (
     ExternalServiceInvalidResponse,
     ExternalServiceTimeout,
     ExternalServiceUnavailable,
 )
+from app.integrations import mapas_culturais
 from app.integrations.mapas_culturais import MapasCulturaisClient, normalize_space
 from app.services.sync_spaces import sync_spaces
 
 BASE = "https://saas.mapas.cultura.gov.br"
+
+
+@pytest.fixture
+def event_cache(monkeypatch, clock):
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 11, 15, 12, tzinfo=tz)
+
+    monkeypatch.setattr(mapas_culturais, "datetime", FixedDateTime)
+    monkeypatch.setattr(
+        mapas_culturais, "_events_cache", ResponseCache(300, timer=clock)
+    )
+    monkeypatch.setattr(
+        mapas_culturais, "_events_fallback", ResponseCache(3600, timer=clock)
+    )
+    monkeypatch.setattr(
+        mapas_culturais,
+        "EVENTS_RETRY",
+        replace(mapas_culturais.EVENTS_RETRY, base_delay=0),
+    )
+    return clock
+
+
+def event(identity=10, **changes):
+    return {
+        "id": identity,
+        "name": "Exposição",
+        "status": 1,
+        "occurrences": [{"id": 21, "spaceId": 8}],
+        **changes,
+    }
+
+
+async def test_events_request_uses_public_schedule_by_space_and_follows_pages(
+    event_cache,
+):
+    pages = []
+    occurrence = {"id": 32, "spaceId": 8}
+
+    def handler(request):
+        params = request.url.params
+        assert request.url.path == "/api/event/findBySpace"
+        assert params["spaceId"] == "8"
+        assert params["status"] == "EQ(1)"
+        assert params["@from"] == "2026-11-15"
+        assert params["@to"] == "2026-12-15"
+        assert "name" in params["@select"].split(",")
+        page = int(params["@page"])
+        pages.append(page)
+        rows = {
+            1: [event()],
+            2: [
+                event(11, occurrences={"2": occurrence}),
+                event(12, status=0),
+                event(13, occurrences=[]),
+            ],
+        }
+        return httpx.Response(200, json=rows.get(page, []))
+
+    result = await adapter(handler).fetch_events_by_space("8")
+
+    assert result == [event(), event(11, occurrences=[occurrence])]
+    assert pages == [1, 2, 3]
+
+
+async def test_events_retries_transient_failure(event_cache):
+    calls = 0
+
+    def handler(request):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return httpx.Response(503)
+        return httpx.Response(200, json=[event()] if calls == 2 else [])
+
+    assert await adapter(handler).fetch_events_by_space(8) == [event()]
+    assert calls == 3
+
+
+async def test_events_fallback_keeps_only_complete_snapshots_for_the_same_space(
+    event_cache,
+):
+    calls = []
+    offline = False
+
+    def handler(request):
+        space, page = (request.url.params[key] for key in ("spaceId", "@page"))
+        calls.append((space, page))
+        if not offline:
+            return httpx.Response(200, json=[event()] if page == "1" else [])
+        if space == "8" and page == "1":
+            return httpx.Response(200, json=[event(99)])
+        return httpx.Response(403, text="<html>Temporarily unavailable</html>")
+
+    client = adapter(handler)
+    result = await client.fetch_events_by_space(8)
+    result[0]["name"] = "modified by caller"
+    assert await client.fetch_events_by_space(8) == [event()]
+    assert calls == [("8", "1"), ("8", "2")]
+
+    offline = True
+    event_cache.now = 301
+    assert await client.fetch_events_by_space(8) == [event()]
+    assert await client.fetch_events_by_space(9) == []
+
+    event_cache.now = 3601
+    assert await client.fetch_events_by_space(8) == []
+
+
+@pytest.mark.parametrize(
+    "payload", [{"error": "unexpected"}, [event(occurrences=None)]]
+)
+async def test_invalid_agenda_is_not_cached_as_empty(event_cache, payload):
+    current = payload
+
+    def handler(request):
+        return httpx.Response(
+            200, json=current if request.url.params["@page"] == "1" else []
+        )
+
+    client = adapter(handler)
+    assert await client.fetch_events_by_space(8) == []
+    current = [event()]
+    assert await client.fetch_events_by_space(8) == [event()]
 
 
 @pytest.fixture

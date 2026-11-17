@@ -281,6 +281,18 @@
                 }
               }
             },
+            "is_independent": {
+              "bsonType": ["bool", "null"]
+            },
+            "region_zone": {
+              "enum": ["Centro", "Sul", "Leste", "Norte", "Oeste", null]
+            },
+            "community_center": {
+              "bsonType": ["bool", "null"]
+            },
+            "curation_score": {
+              "bsonType": ["double", "int", "long", "null"]
+            },
             "visit_duration_minutes": {
               "bsonType": [
                 "int",
