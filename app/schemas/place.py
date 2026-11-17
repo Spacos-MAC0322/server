@@ -12,6 +12,7 @@ from typing import Annotated, Literal, Self
 from bson.decimal128 import Decimal128
 from pydantic import (
     AliasChoices,
+    AliasPath,
     BaseModel,
     ConfigDict,
     Field,
@@ -247,6 +248,23 @@ class PlaceSummarySchema(ReadSchema):
             # Recompute badges from the explicitly supplied curation.
             data.pop("badges", None)
         return cls.model_validate(data)
+
+
+class PlaceCardSchema(PlaceSummarySchema):
+    """Summary plus the short texts shown on discovery cards."""
+
+    neighborhood: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "neighborhood", AliasPath("address", "neighborhood")
+        ),
+    )
+    short_description: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "short_description", AliasPath("description", "short")
+        ),
+    )
 
 
 class EventSchema(ReadSchema):

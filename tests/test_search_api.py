@@ -49,6 +49,48 @@ async def test_discover_returns_only_eligible_places_and_interleaves_zones(clien
     assert "publication_status" not in places[0]
 
 
+async def test_discover_includes_neighborhood_and_short_description(client, db):
+    await db.places.insert_many(
+        [
+            place(
+                "with-texts",
+                is_independent=True,
+                address={"full": "Rua A, 1", "neighborhood": "Butantã"},
+                description={"short": "Oficinas e saraus.", "long": "Texto longo."},
+            ),
+            place("without-texts", is_independent=True, address=None),
+        ]
+    )
+
+    response = await client.get("/api/search/discover")
+
+    assert response.status_code == 200
+    cards = {result["id"]: result for result in response.json()}
+    assert cards["with-texts"]["neighborhood"] == "Butantã"
+    assert cards["with-texts"]["short_description"] == "Oficinas e saraus."
+    assert "address" not in cards["with-texts"]
+    assert "description" not in cards["with-texts"]
+    assert cards["without-texts"]["neighborhood"] is None
+    assert cards["without-texts"]["short_description"] is None
+
+
+async def test_map_pins_keep_the_lean_summary(client, db):
+    await db.places.insert_one(
+        place(
+            "pin",
+            address={"neighborhood": "Butantã"},
+            description={"short": "Oficinas e saraus."},
+        )
+    )
+
+    response = await client.get("/api/places")
+
+    assert response.status_code == 200
+    (pin,) = response.json()
+    assert "neighborhood" not in pin
+    assert "short_description" not in pin
+
+
 async def test_discover_returns_empty_array_without_curated_places(client, db):
     await db.places.insert_one(place("unscored", region_zone="Oeste"))
 
