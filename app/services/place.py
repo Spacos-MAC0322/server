@@ -14,6 +14,7 @@ from app.integrations.mapas_culturais import (
 from app.repositories.place_repository import PlaceRepository
 from app.schemas.place import (
     EventSchema,
+    PlaceCardSchema,
     PlaceDescriptionSchema,
     PlaceDetailSchema,
     PlaceListQuery,
@@ -54,12 +55,18 @@ class PlaceService:
         documents = await self.repository.find_nearby(lat, lng, radius_km * 1000)
         return await self._summarize_visible_places(documents)
 
-    async def discover_places(self) -> list[PlaceSummarySchema]:
+    async def discover_places(self) -> list[PlaceCardSchema]:
         documents = await self.repository.find_all()
-        return await self._summarize_visible_places(documents, curated_only=True)
+        return await self._summarize_visible_places(
+            documents, curated_only=True, schema=PlaceCardSchema
+        )
 
     async def _summarize_visible_places(
-        self, documents: list[dict], *, curated_only: bool = False
+        self,
+        documents: list[dict],
+        *,
+        curated_only: bool = False,
+        schema: type[PlaceSummarySchema] = PlaceSummarySchema,
     ) -> list[PlaceSummarySchema]:
         visible = [
             doc
@@ -73,7 +80,7 @@ class PlaceService:
             ranked = rank_places(visible, curations=curations)
             visible = [doc for doc in ranked if doc["curation_score"] > 0]
         return [
-            PlaceSummarySchema.from_mongo(doc, curation=curations.get(doc["_id"]))
+            schema.from_mongo(doc, curation=curations.get(doc["_id"]))
             for doc in visible
         ]
 
