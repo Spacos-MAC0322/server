@@ -51,9 +51,9 @@ class PlaceService:
 
     async def list_nearby_places(
         self, lat: float, lng: float, radius_km: float
-    ) -> list[PlaceSummarySchema]:
+    ) -> list[PlaceCardSchema]:
         documents = await self.repository.find_nearby(lat, lng, radius_km * 1000)
-        return await self._summarize_visible_places(documents)
+        return await self._summarize_visible_places(documents, schema=PlaceCardSchema)
 
     async def discover_places(self) -> list[PlaceCardSchema]:
         documents = await self.repository.find_all()

@@ -81,7 +81,7 @@ async def test_geocode_rejects_invalid_queries_before_calling_nominatim(
 
 async def test_geocode_is_unavailable_when_disabled(client, upstream):
     requests, _ = upstream
-    app.dependency_overrides[get_settings] = lambda: Settings()
+    app.dependency_overrides[get_settings] = lambda: Settings(nominatim_enabled=False)
 
     response = await client.get("/api/search/geocode", params={"q": "MASP"})
 

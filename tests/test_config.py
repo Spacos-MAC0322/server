@@ -135,9 +135,9 @@ def test_empty_optional_fields_and_unknown_dotenv_values(tmp_path):
     assert settings.nominatim_email is None
 
 
-def test_nominatim_defaults_to_disabled_public_instance():
+def test_nominatim_defaults_to_enabled_public_instance():
     settings = Settings()
-    assert settings.nominatim_enabled is False
+    assert settings.nominatim_enabled is True
     assert str(settings.nominatim_base_url) == "https://nominatim.openstreetmap.org/"
 
 

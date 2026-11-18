@@ -201,7 +201,7 @@ async def test_disabled_feature_and_blank_query_fail_before_any_request(nominati
     with pytest.raises(ValueError, match="blank"):
         await client.search("   ")
 
-    client.settings = Settings()
+    client.settings = Settings(nominatim_enabled=False)
     with pytest.raises(ValueError, match="NOMINATIM_ENABLED"):
         await client.search("MASP")
     assert requests == []

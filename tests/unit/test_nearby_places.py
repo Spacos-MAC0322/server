@@ -38,6 +38,8 @@ async def test_nearby_service_converts_radius_and_preserves_distance_order():
             "name": name,
             "publication_status": status,
             "location": {"type": "Point", "coordinates": [lng, -23.55]},
+            "address": {"neighborhood": "Sé"},
+            "description": {"short": f"Resumo de {name}"},
         }
         for name, status, lng in (
             ("z-nearest", "published", -46.6301),
@@ -54,3 +56,6 @@ async def test_nearby_service_converts_radius_and_preserves_distance_order():
     repository.find_nearby.assert_awaited_once_with(-23.55, -46.63, 500)
     assert [place.id for place in places] == ["z-nearest", "a-farther"]
     assert places[1].badges.family_friendly is True
+    # The list beside the map shows the neighborhood, like the discovery cards.
+    assert places[0].neighborhood == "Sé"
+    assert places[0].short_description == "Resumo de z-nearest"
