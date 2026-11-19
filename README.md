@@ -550,6 +550,49 @@ busca, ignorando maiúsculas e espaços, não sai do servidor) e só é chamado
 quando o usuário envia a busca, nunca para autocompletar. Os mapas do frontend
 já exibem a atribuição do OpenStreetMap.
 
+## Busca com filtros
+
+`GET /api/search` alimenta ao mesmo tempo os pinos do mapa e os cards da página
+Explorar (user story #6). Todos os filtros informados precisam valer; dentro de
+uma mesma lista, basta um dos valores:
+
+| Parâmetro | Exemplo | Significado |
+| --- | --- | --- |
+| `q` | `q=sao mateus` | Texto livre no nome, bairro, categoria, subprefeitura ou zona; ignora acentos e exige todas as palavras |
+| `categories` (repetível) | `categories=arte&categories=musica` | Grupos de interesse de `GET /api/search/filters` |
+| `regions` (repetível) | `regions=Centro&regions=Leste` | Zonas: Centro, Norte, Sul, Leste, Oeste (preenchidas pelo GeoSampa) |
+| `is_free` | `is_free=true` | Só entrada gratuita |
+| `max_price` | `max_price=20` | Até R$ 20; inclui gratuitos e deixa de fora preço desconhecido |
+| área do mapa | `sw_lat`, `sw_lng`, `ne_lat`, `ne_lng` | Os quatro juntos, como em `/api/places` |
+| raio | `lat`, `lng`, `radius_km` | Os três juntos; resultados do mais próximo ao mais distante |
+
+Sem raio, a ordem é alfabética. A resposta tem o formato dos cards
+(`PlaceCardSchema`: bairro e resumo incluídos). Combinação inválida (por exemplo,
+área e raio juntos, ou um grupo inexistente) responde HTTP 422; banco
+indisponível, HTTP 503.
+
+`GET /api/search/filters` devolve as opções do painel de filtros:
+
+- `groups`: os grupos de interesse, na ordem de exibição, com quantos espaços
+  publicados há em cada um;
+- `priced_places`: quantos desses espaços têm gratuidade ou preço conhecidos.
+  Com 0, o frontend esconde os filtros de preço, que não teriam resultado. No
+  Mapas Culturais de São Paulo, o campo de preço vem vazio em todos os espaços.
+
+Os grupos ficam em `app/services/interest_groups.py`. Três em cada quatro
+espaços são "Ponto de Cultura", então o tipo do Mapas Culturais sozinho quase não
+diferencia. Cada grupo procura:
+
+- palavras-chave inteiras no tipo e no nome ("Escola de Samba..." entra em
+  Música pelo nome; "coral" não pega "Cora Coralina"), com exclusões ("Escola de
+  Samba" não é curso);
+- frases explícitas na descrição curta ("sala de cinema", "aulas de dança").
+  Palavras soltas ali não contam: "produtora de filmes" não faz de uma
+  gravadora um cinema. A descrição longa fica de fora.
+
+Um espaço pode estar em mais de um grupo; criar ou ajustar um grupo é uma linha
+nessa tabela.
+
 ## Verificação
 
 ```powershell
