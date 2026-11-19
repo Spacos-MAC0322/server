@@ -8,7 +8,12 @@ from pymongo.asynchronous.database import AsyncDatabase
 from pymongo.errors import PyMongoError
 
 from app.core.database import get_database
-from app.schemas.place import PlaceDetailSchema, PlaceListQuery, PlaceSummarySchema
+from app.schemas.place import (
+    PlaceCardSchema,
+    PlaceDetailSchema,
+    PlaceListQuery,
+    PlaceSummarySchema,
+)
 from app.services.place import PlaceService
 
 router = APIRouter(prefix="/api/places", tags=["places"])
@@ -46,12 +51,13 @@ async def get_places(
 
 @router.get(
     "/nearby",
-    response_model=list[PlaceSummarySchema],
+    response_model=list[PlaceCardSchema],
     summary="Buscar espaços culturais próximos",
     description=(
         "Busca espaços publicados dentro de um raio em quilômetros, "
-        "do mais próximo ao mais distante. Raio zero retorna apenas espaços "
-        "exatamente na coordenada informada."
+        "do mais próximo ao mais distante, com bairro e resumo para a lista "
+        "ao lado do mapa. Raio zero retorna apenas espaços exatamente na "
+        "coordenada informada."
     ),
     responses={503: {"description": "Banco de dados temporariamente indisponível"}},
 )
@@ -62,7 +68,7 @@ async def get_nearby_places(
         float, Query(ge=0, le=float_info.max / 1000, allow_inf_nan=False)
     ],
     service: Annotated[PlaceService, Depends(get_place_service)],
-) -> list[PlaceSummarySchema]:
+) -> list[PlaceCardSchema]:
     try:
         return await service.list_nearby_places(lat, lng, radius_km)
     except PyMongoError:

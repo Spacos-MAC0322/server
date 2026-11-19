@@ -86,6 +86,8 @@ O `.env` é interpretado como dados, nunca executado como código de shell.
 | `SPTRANS_ENABLED` / `SPTRANS_BASE_URL` / `SPTRANS_TOKEN` | Desabilitado; ao habilitar, exige URL e token |
 | `SPTRANS_GTFS_PATH` | Caminho do ZIP GTFS oficial, usado para localizar paradas e estimar conexões diretas |
 | `OPEN_METEO_ENABLED` / `OPEN_METEO_BASE_URL` | Desabilitado; URL padrão `https://api.open-meteo.com` |
+| `NOMINATIM_ENABLED` / `NOMINATIM_BASE_URL` | Habilitado (não exige chave); URL padrão `https://nominatim.openstreetmap.org` (busca por endereço) |
+| `NOMINATIM_EMAIL` | Opcional; contato enviado ao Nominatim, como pede a política de uso do serviço |
 
 Se os dois nomes da conexão estiverem definidos na mesma fonte, `MONGO_URI`
 prevalece. Uma variável do terminal prevalece sobre o `.env` mesmo quando usa
@@ -369,6 +371,7 @@ recebendo o banco já conectado e inicializado por `core.database`.
 | `upsert_many(places)` | Recebe documentos normalizados e retorna a quantidade processada, incluindo atualizações |
 | `find_all()` | Retorna todos os documentos, inclusive os sem localização, ordenados por `_id` |
 | `find_in_bounds(sw_lat, sw_lng, ne_lat, ne_lng)` | Retorna documentos dentro do polígono delimitado pelos cantos sudoeste e nordeste, ordenados por `_id` |
+| `find_nearby(lat, lng, radius_meters)` | Retorna documentos a até `radius_meters` do ponto, do mais próximo ao mais distante (`$nearSphere`) |
 
 A gravação reaproveita o schema e os índices existentes, preservando identidade,
 publicação, campos curados e outras fontes. Todas as `source_keys` recebidas são
@@ -403,8 +406,8 @@ converter para os schemas de resposta. `find_all()` inclui todos os estados.
 
 `find_in_bounds` atende à área visível de um mapa ou a uma área construída ao
 redor da posição do usuário. Não calcula distância, não ordena por proximidade
-e não equivale a um raio em quilômetros. Uma futura busca por raio/mais próximos
-terá um contrato próprio usando `$near` ou `$geoNear`. A localização do usuário
+e não equivale a um raio em quilômetros. A busca por raio é feita por
+`find_nearby`, com `$nearSphere` sobre o mesmo índice. A localização do usuário
 é um parâmetro de consulta e não precisa ser gravada em `places`.
 
 ## Modelos de consulta de espaços
@@ -483,6 +486,42 @@ Nenhum resultado produz HTTP 200 com `[]`. Falhas do MongoDB retornam HTTP 503
 com uma mensagem genérica. A consulta utiliza apenas o banco local, sem coletar
 dados ou chamar o Mapas Culturais durante a requisição.
 Os parâmetros e o schema de resposta aparecem em `/docs`.
+
+## Atrações próximas e busca por endereço
+
+`GET /api/places/nearby` lista os espaços visíveis a até `radius_km` de um ponto,
+do mais próximo ao mais distante (issue #3). A resposta usa `PlaceCardSchema`:
+os campos do pino mais `neighborhood` e `short_description`, para a lista ao
+lado do mapa. Os filtros de publicação e de localização válida são os mesmos de
+`GET /api/places`. Coordenadas inválidas ou raio negativo/não finito retornam
+HTTP 422; falhas do MongoDB, HTTP 503.
+
+```text
+GET /api/places/nearby?lat=-23.5614&lng=-46.6559&radius_km=2
+```
+
+`GET /api/search/geocode?q=...` converte um endereço, bairro ou lugar conhecido
+em coordenadas pelo [Nominatim](https://nominatim.org/) (OpenStreetMap), restrito
+à região metropolitana de São Paulo. Retorna até 5 lugares distintos
+(`label`, `neighborhood`, `lat`, `lng`), do mais relevante ao menos relevante:
+
+- resultados a menos de 1,5 km um do outro contam como o mesmo lugar (o museu e
+  o café na porta dele, trechos da mesma avenida);
+- empates de relevância, comuns em ruas homônimas, favorecem o lugar mais
+  próximo da Praça da Sé;
+- mais de um resultado indica que o usuário deve escolher; `[]` indica que nada
+  foi encontrado. CEPs e erros de digitação geralmente não são encontrados.
+
+`q` precisa ter de 3 a 200 caracteres (senão HTTP 422). A busca vem ligada por
+padrão; com `NOMINATIM_ENABLED=false`, a rota responde HTTP 503; falhas do Nominatim respondem HTTP 502/504
+com `"service": "nominatim"`, e o frontend continua oferecendo a localização do
+navegador. O adaptador `app/integrations/nominatim.py` segue a
+[política de uso](https://operations.osmfoundation.org/policies/nominatim/) da
+instância pública: identifica o cliente pelo User-Agent `spacos-server`, faz no
+máximo uma requisição por segundo, guarda as respostas por 24 horas (a mesma
+busca, ignorando maiúsculas e espaços, não sai do servidor) e só é chamado
+quando o usuário envia a busca, nunca para autocompletar. Os mapas do frontend
+já exibem a atribuição do OpenStreetMap.
 
 ## Verificação
 

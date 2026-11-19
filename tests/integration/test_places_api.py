@@ -112,6 +112,7 @@ async def test_nearby_places_api_filters_radius_and_visibility_in_distance_order
                 "source_keys": [f"test:{identity}"],
                 "sources": [{"provider": "test", "external_id": identity}],
                 "location": {"type": "Point", "coordinates": [longitude, -23.55]},
+                "address": {"neighborhood": "Sé"},
                 "data_quality": {"location_valid": is_valid},
             }
         )
@@ -125,6 +126,7 @@ async def test_nearby_places_api_filters_radius_and_visibility_in_distance_order
     assert response.status_code == 200
     assert [place["id"] for place in response.json()] == ["z-nearest", "a-farther"]
     assert response.json()[0]["badges"]["family_friendly"] is True
+    assert response.json()[0]["neighborhood"] == "Sé"
 
     same_point = await places_client.get(
         "/api/places/nearby", params={**query, "radius_km": 0}

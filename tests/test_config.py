@@ -67,6 +67,7 @@ def test_environment_alias_beats_dotenv_alias(
         ({"external_api_timeout_seconds": 0}, "greater than"),
         ({"external_api_timeout_seconds": float("inf")}, "finite"),
         ({"sptrans_base_url": "not-a-url"}, "URL"),
+        ({"nominatim_base_url": "not-a-url"}, "URL"),
         ({"auth_enabled": True}, "requires JWT_SECRET"),
         ({"jwt_secret": "short-secret"}, "at least 32"),
         ({"mapas_culturais_enabled": True}, "MAPAS_CULTURAIS_ENABLED"),
@@ -124,13 +125,20 @@ def test_empty_optional_fields_and_unknown_dotenv_values(tmp_path):
     env_file.write_text(
         "JWT_SECRET=\nSPTRANS_TOKEN=\nMONGODB_TEST_URI=\n"
         "MAPAS_CULTURAIS_BASE_URL=\nGEOSAMPA_BASE_URL=\nSPTRANS_BASE_URL=\n"
-        "UNRELATED_TOOL_VALUE=example\n",
+        "NOMINATIM_EMAIL=\nUNRELATED_TOOL_VALUE=example\n",
         encoding="utf-8",
     )
     settings = Settings(_env_file=env_file)
     assert settings.jwt_secret is None
     assert settings.mongodb_test_uri is None
     assert settings.mapas_culturais_base_url is None
+    assert settings.nominatim_email is None
+
+
+def test_nominatim_defaults_to_enabled_public_instance():
+    settings = Settings()
+    assert settings.nominatim_enabled is True
+    assert str(settings.nominatim_base_url) == "https://nominatim.openstreetmap.org/"
 
 
 def test_invalid_secret_is_not_in_validation_error():

@@ -14,6 +14,8 @@ from pathlib import Path
 from zipfile import ZipFile
 from zoneinfo import ZoneInfo
 
+from app.core.geo import distance_m
+
 SAO_PAULO = ZoneInfo("America/Sao_Paulo")
 WEEKDAYS = (
     "monday",
@@ -34,15 +36,6 @@ def validate_coordinates(lat: float, lng: float) -> None:
             or not math.isfinite(value)
         ):
             raise ValueError("Expected finite latitude/longitude within valid bounds")
-
-
-def distance_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
-    p1, p2 = math.radians(lat1), math.radians(lat2)
-    a = (
-        math.sin((p2 - p1) / 2) ** 2
-        + math.cos(p1) * math.cos(p2) * math.sin(math.radians(lng2 - lng1) / 2) ** 2
-    )
-    return 6371000 * 2 * math.asin(math.sqrt(min(1, a)))
 
 
 def _seconds(value: str) -> int:

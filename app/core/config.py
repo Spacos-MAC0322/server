@@ -93,6 +93,13 @@ class Settings(StartupSettings):
     sptrans_gtfs_path: Path | None = None
     open_meteo_enabled: bool = False
     open_meteo_base_url: HttpUrl = "https://api.open-meteo.com"
+    # Ligado por padrão, ao contrário das outras APIs: não exige chave, e sem ele
+    # a busca por endereço da página Explorar não funciona.
+    # NOMINATIM_ENABLED=false desliga.
+    nominatim_enabled: bool = True
+    nominatim_base_url: HttpUrl = "https://nominatim.openstreetmap.org"
+    # Contato opcional enviado ao Nominatim, como pede a política de uso do serviço.
+    nominatim_email: str | None = None
 
     @field_validator(
         "jwt_secret",
@@ -101,6 +108,7 @@ class Settings(StartupSettings):
         "mapas_culturais_base_url",
         "geosampa_base_url",
         "sptrans_base_url",
+        "nominatim_email",
         mode="before",
     )
     @classmethod

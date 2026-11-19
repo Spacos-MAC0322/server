@@ -13,10 +13,11 @@ from typing import Any
 from zipfile import BadZipFile
 from zoneinfo import ZoneInfo
 
+from app.core.geo import distance_m
 from app.core.http_client import ExternalAPIError
 from app.integrations.open_meteo import OpenMeteoClient
 from app.integrations.sptrans import SPTransClient
-from app.integrations.sptrans_gtfs import distance_m, validate_coordinates
+from app.integrations.sptrans_gtfs import validate_coordinates
 from app.repositories.itinerary_repository import ItineraryRepository
 from app.schemas.itinerary import BusLineSchema, TransitLegSchema, WeatherResponse
 
