@@ -86,7 +86,8 @@ class Settings(StartupSettings):
     mapas_culturais_enabled: bool = False
     mapas_culturais_base_url: HttpUrl | None = None
     geosampa_enabled: bool = False
-    geosampa_base_url: HttpUrl | None = None
+    # Lido só pelo job de sincronização (zona de cada lugar); não exige chave.
+    geosampa_base_url: HttpUrl | None = "https://wfs.geosampa.prefeitura.sp.gov.br"
     sptrans_enabled: bool = False
     sptrans_base_url: HttpUrl | None = None
     sptrans_token: SecretStr | None = None

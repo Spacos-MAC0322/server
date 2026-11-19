@@ -82,7 +82,7 @@ O `.env` é interpretado como dados, nunca executado como código de shell.
 | `JWT_SECRET` | Sem padrão; obrigatório para iniciar a API (assina os tokens de login), com pelo menos 32 caracteres não vazios. Se omitido, `start.sh` gera um segredo temporário |
 | `JWT_EXPIRE_MINUTES` | `1440` (1 dia); validade do token de login, deve ser positivo |
 | `MAPAS_CULTURAIS_ENABLED` / `MAPAS_CULTURAIS_BASE_URL` | Desabilitado; ao habilitar, exige URL HTTP(S) |
-| `GEOSAMPA_ENABLED` / `GEOSAMPA_BASE_URL` | Desabilitado; ao habilitar, exige URL HTTP(S) |
+| `GEOSAMPA_ENABLED` / `GEOSAMPA_BASE_URL` | Desabilitado; URL padrão `https://wfs.geosampa.prefeitura.sp.gov.br`. Usado só pela sincronização, para preencher a zona e a subprefeitura de cada lugar |
 | `SPTRANS_ENABLED` / `SPTRANS_BASE_URL` / `SPTRANS_TOKEN` | Desabilitado; ao habilitar, exige URL e token |
 | `SPTRANS_GTFS_PATH` | Caminho do ZIP GTFS oficial, usado para localizar paradas e estimar conexões diretas |
 | `OPEN_METEO_ENABLED` / `OPEN_METEO_BASE_URL` | Desabilitado; URL padrão `https://api.open-meteo.com` |
@@ -106,7 +106,7 @@ Para gerar um segredo JWT localmente, pode-se usar
 `python -c "import secrets; print(secrets.token_urlsafe(32))"` e guardá-lo no `.env`.
 
 Login e proteção de rotas estão descritos em [Autenticação](#autenticação); os
-demais campos preparam a configuração dos adaptadores. URLs de Mapas Culturais, GeoSampa e SPTrans
+demais campos preparam a configuração dos adaptadores. URLs de Mapas Culturais e SPTrans
 ficam sem padrão até confirmar os endpoints efetivamente usados. Open-Meteo
 público não exige token para o uso previsto. Os comandos diretos do banco usam
 `DatabaseSettings` e não exigem JWT ou credenciais de integrações.
