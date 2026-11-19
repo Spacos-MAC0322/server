@@ -1,4 +1,4 @@
-"""Access to the `users` and `user_places` collections; services depend on this, never on MongoDB."""
+"""Access to `users` and `user_places`; services depend on this, never on MongoDB."""
 
 from datetime import UTC, datetime
 from typing import Annotated, Any
@@ -83,7 +83,7 @@ class UserRepository:
         return PlaceSummarySchema.from_mongo(place, curation=curation)
 
     async def remove_favorite(self, user_id: str, place_id: str) -> bool:
-        """Unmark a place as favorite for the user. Returns True if a favorite was removed."""
+        """Unmark a place as favorite; returns True if a favorite was removed."""
         result = await self._user_places.update_one(
             {"user_id": user_id, "place_id": place_id, "is_favorite": True},
             {"$set": {"is_favorite": False}},
@@ -91,7 +91,7 @@ class UserRepository:
         return result.modified_count > 0
 
     async def list_favorites(self, user_id: str) -> list[PlaceSummarySchema]:
-        """Return populated PlaceSummarySchema objects for all published favorites of the user."""
+        """Return populated PlaceSummarySchema objects for the user's favorites."""
         links = (
             await self._user_places.find(
                 {"user_id": user_id, "is_favorite": True}

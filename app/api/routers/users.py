@@ -15,8 +15,12 @@ from ...schemas.place import PlaceSummarySchema
 
 PLACE_NOT_FOUND = "Espaço não encontrado."
 FAVORITES_UNAVAILABLE = "Não foi possível consultar os favoritos no momento."
-FAVORITE_SAVE_UNAVAILABLE = "Não foi possível salvar este espaço nos favoritos no momento."
-FAVORITE_REMOVE_UNAVAILABLE = "Não foi possível remover este espaço dos favoritos no momento."
+FAVORITE_SAVE_UNAVAILABLE = (
+    "Não foi possível salvar este espaço nos favoritos no momento."
+)
+FAVORITE_REMOVE_UNAVAILABLE = (
+    "Não foi possível remover este espaço dos favoritos no momento."
+)
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 Repository = Annotated[UserRepository, Depends(get_user_repository)]
