@@ -47,42 +47,45 @@ class PlaceService:
             documents = await self.repository.find_all()
         else:
             documents = await self.repository.find_in_bounds(*bounds)
-        return await self._summarize_visible_places(documents)
+        return await summarize_places(self.repository, documents)
 
     async def list_nearby_places(
         self, lat: float, lng: float, radius_km: float
     ) -> list[PlaceCardSchema]:
         documents = await self.repository.find_nearby(lat, lng, radius_km * 1000)
-        return await self._summarize_visible_places(documents, schema=PlaceCardSchema)
+        return await summarize_places(
+            self.repository, documents, schema=PlaceCardSchema
+        )
 
     async def discover_places(self) -> list[PlaceCardSchema]:
         documents = await self.repository.find_all()
-        return await self._summarize_visible_places(
-            documents, curated_only=True, schema=PlaceCardSchema
+        return await summarize_places(
+            self.repository, documents, curated_only=True, schema=PlaceCardSchema
         )
 
-    async def _summarize_visible_places(
-        self,
-        documents: list[dict],
-        *,
-        curated_only: bool = False,
-        schema: type[PlaceSummarySchema] = PlaceSummarySchema,
-    ) -> list[PlaceSummarySchema]:
-        visible = [
-            doc
-            for doc in documents
-            if doc.get("publication_status") == "published"
-            and doc.get("location") is not None
-            and doc.get("data_quality", {}).get("location_valid") is not False
-        ]
-        curations = await self.repository.find_curations(doc["_id"] for doc in visible)
-        if curated_only:
-            ranked = rank_places(visible, curations=curations)
-            visible = [doc for doc in ranked if doc["curation_score"] > 0]
-        return [
-            schema.from_mongo(doc, curation=curations.get(doc["_id"]))
-            for doc in visible
-        ]
+
+async def summarize_places(
+    repository: PlaceRepository,
+    documents: list[dict],
+    *,
+    curated_only: bool = False,
+    schema: type[PlaceSummarySchema] = PlaceSummarySchema,
+) -> list[PlaceSummarySchema]:
+    """Public, located places as response models, with curation badges joined."""
+    visible = [
+        doc
+        for doc in documents
+        if doc.get("publication_status") == "published"
+        and doc.get("location") is not None
+        and doc.get("data_quality", {}).get("location_valid") is not False
+    ]
+    curations = await repository.find_curations(doc["_id"] for doc in visible)
+    if curated_only:
+        ranked = rank_places(visible, curations=curations)
+        visible = [doc for doc in ranked if doc["curation_score"] > 0]
+    return [
+        schema.from_mongo(doc, curation=curations.get(doc["_id"])) for doc in visible
+    ]
 
 
 async def _fetch_place_events(place: PlaceDetailSchema) -> list[EventSchema]:

@@ -6,8 +6,9 @@ amount in reais ("Consulte a programação") leaves every field unknown (None).
 """
 
 import re
-import unicodedata
 from typing import TypedDict
+
+from app.core.text import fold
 
 # Bare "livre" is left out: it usually means the age rating ("classificação livre").
 FREE_ENTRY = re.compile(
@@ -26,13 +27,6 @@ class AdmissionPrice(TypedDict):
     is_free: bool | None
     price_min: float | None
     price_max: float | None
-
-
-def _fold(value: str) -> str:
-    decomposed = unicodedata.normalize("NFKD", value.casefold())
-    return " ".join(
-        "".join(c for c in decomposed if not unicodedata.combining(c)).split()
-    )
 
 
 def _amount(raw: str) -> float | None:
@@ -57,7 +51,7 @@ def parse_price_text(value: object) -> AdmissionPrice:
     unknown: AdmissionPrice = {"is_free": None, "price_min": None, "price_max": None}
     if not isinstance(value, str) or not value.strip():
         return unknown
-    folded = _fold(value)
+    folded = fold(value)
     amounts = [
         amount
         for match in AMOUNT.finditer(folded)
