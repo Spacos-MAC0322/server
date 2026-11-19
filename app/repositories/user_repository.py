@@ -96,7 +96,7 @@ class UserRepository:
             await self._user_places.find(
                 {"user_id": user_id, "is_favorite": True}
             )
-            .sort("_id", 1)
+            .sort("place_id", 1)
             .to_list()
         )
         place_ids = [link["place_id"] for link in links]
