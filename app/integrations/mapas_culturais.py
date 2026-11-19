@@ -28,6 +28,7 @@ from app.core.http_client import (
     RetryPolicy,
     create_http_client,
 )
+from app.core.price_text import parse_price_text
 
 logger = logging.getLogger(__name__)
 SERVICE = "mapas_culturais"
@@ -142,9 +143,7 @@ def normalize_space(record: dict, base_url: str) -> dict | None:
         "location": point,
         "opening_hours": {"text": text(record.get("horario")), "verified": False},
         "admission": {
-            "is_free": None,
-            "price_min": None,
-            "price_max": None,
+            **parse_price_text(price),
             "price_text": price or None,
             "currency": "BRL",
         },

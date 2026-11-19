@@ -144,9 +144,11 @@ async def test_adapter_normalizes_mocked_http_response_for_the_project_schema():
     assert first["categories"] == ["Museu"]
     assert first["opening_hours"] == {"text": "10h–18h", "verified": False}
     assert first["admission"]["price_text"] == "R$ 20"
-    assert first["admission"]["is_free"] is None
+    assert first["admission"]["is_free"] is False
+    assert first["admission"]["price_min"] == 20.0
     assert first["public_access"] is None
     assert first["publication_status"] == "review"
     assert unknown["opening_hours"]["text"] is None
     assert unknown["admission"]["price_text"] is None
+    assert unknown["admission"]["is_free"] is None
     assert PlaceSummarySchema.from_mongo(first).primary_category == "Museu"
