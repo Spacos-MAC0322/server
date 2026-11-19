@@ -1,4 +1,4 @@
-"""The /api/users/me/favorites endpoints on in-memory MongoDB."""
+"""Automated integration tests for adding, listing and removing user favorites."""
 
 from unittest.mock import AsyncMock
 
@@ -9,6 +9,7 @@ from app.core.database import ensure_indexes
 from app.repositories.user_repository import UserRepository
 
 ANA = {"name": "Ana", "email": "ana@example.com", "password": "senha-segura"}
+BRUNO = {"name": "Bruno", "email": "bruno@example.com", "password": "senha-segura"}
 
 
 def place_doc(identity: str, *, status: str = "published", name: str = "Museu"):
@@ -88,6 +89,12 @@ async def test_add_list_and_remove_favorites_populated_with_place_summary(client
         },
     }
 
+    # Re-adding the same favorite is idempotent and does not duplicate items
+    duplicate = await client.post(
+        "/api/users/me/favorites/mapas_saas%3Aspace%3A31", headers=headers
+    )
+    assert duplicate.status_code == 201
+
     post2 = await client.post(
         "/api/users/me/favorites/mapas_saas%3Aspace%3A42", headers=headers
     )
@@ -108,6 +115,35 @@ async def test_add_list_and_remove_favorites_populated_with_place_summary(client
 
     listed_after = await client.get("/api/users/me/favorites", headers=headers)
     assert [item["id"] for item in listed_after.json()] == ["mapas_saas:space:42"]
+
+
+async def test_favorites_are_isolated_per_user_account(client, db):
+    ana_headers = await auth_headers(client)
+    bruno_headers = await auth_headers(client, **BRUNO)
+    await db.places.insert_many(
+        [
+            place_doc("p-ana", name="Espaço da Ana"),
+            place_doc("p-bruno", name="Espaço do Bruno"),
+        ]
+    )
+
+    await client.post("/api/users/me/favorites/p-ana", headers=ana_headers)
+    await client.post("/api/users/me/favorites/p-bruno", headers=bruno_headers)
+
+    ana_list = (await client.get("/api/users/me/favorites", headers=ana_headers)).json()
+    bruno_list = (
+        await client.get("/api/users/me/favorites", headers=bruno_headers)
+    ).json()
+
+    assert [item["id"] for item in ana_list] == ["p-ana"]
+    assert [item["id"] for item in bruno_list] == ["p-bruno"]
+
+    # Bruno attempting to delete Ana's favorite does not affect Ana's list
+    await client.delete("/api/users/me/favorites/p-ana", headers=bruno_headers)
+    ana_list_after = (
+        await client.get("/api/users/me/favorites", headers=ana_headers)
+    ).json()
+    assert [item["id"] for item in ana_list_after] == ["p-ana"]
 
 
 async def test_add_favorite_returns_404_when_place_missing_or_unpublished(client, db):
