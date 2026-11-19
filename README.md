@@ -170,9 +170,12 @@ de uma área de plausibilidade de SP; não substituem a confirmação do municí
 Coordenadas ausentes/inválidas ficam nulas, para revisão e fora do mapa.
 
 Nome, categoria da fonte, endereço, horário e preço textual são preservados.
-Campos ausentes ficam desconhecidos; não se inferem gratuidade, preço numérico,
-acesso público ou horário a partir da descrição. `public` não significa entrada
-livre. Todos os novos locais entram como `publication_status: review`.
+Campos ausentes ficam desconhecidos; não se inferem acesso público ou horário a
+partir da descrição. `public` não significa entrada livre. Gratuidade e faixa de
+preço (`admission.is_free`, `price_min`, `price_max`) vêm apenas do texto de preço
+da fonte, quando ele diz "gratuito"/"entrada franca" ou traz valores em reais
+(`app/core/price_text.py`); sem isso, ficam nulos.
+Todos os novos locais entram como `publication_status: review`.
 A categoria da fonte também alimenta `categories`, sem impor taxonomia própria.
 
 Reexecuções atualizam por `source_keys`, mantendo a identidade `mapas_saas:space:ID`
@@ -187,6 +190,30 @@ não substituem os dados existentes. Falhas durante a escrita podem deixar uma
 importação parcial, registrada como `partial` com a quantidade concluída;
 reexecutar permite retomar sem duplicar. Nada é removido por ausência na fonte.
 O histórico distingue `running`, `success`, `partial` e `error`.
+
+### Zona e subprefeitura (GeoSampa)
+
+Antes de gravar, a sincronização localiza cada espaço nas 32 subprefeituras do
+GeoSampa (`app/services/place_enrichment.py`) e preenche `region_zone` (Centro,
+Norte, Sul, Leste ou Oeste), `territory.subprefecture` e `territory.region`, com
+uma entrada `geosampa` em `sources`. Os contornos ficam salvos na coleção
+`territories`: se o GeoSampa estiver desligado ou fora do ar, a sincronização usa
+os últimos contornos salvos. Sem nenhum contorno, os espaços são gravados sem zona.
+O resultado aparece em `enrichment.territory` do `sync_runs`: `geosampa`, `stored`,
+`unavailable` ou `disabled`. Para ativar:
+
+```powershell
+$env:GEOSAMPA_ENABLED = "true"
+```
+
+Espaços importados antes disso são completados sem nova coleta:
+
+```powershell
+python -m app.jobs.enrich_places
+```
+
+O comando só preenche zona e preço que estejam vazios; valores já existentes,
+inclusive de curadoria, não são alterados. Pode ser repetido sem efeito colateral.
 
 ## Coleta local para testes offline
 

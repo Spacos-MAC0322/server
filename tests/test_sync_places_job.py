@@ -8,9 +8,11 @@ import pytest
 
 from app.core.config import Settings
 from app.core.exceptions import ExternalServiceUnavailable
+from app.core.http_client import ExternalAPIStatusError
 from app.integrations.mapas_culturais import MapasCulturaisClient
 from app.jobs import sync_places as job
 from app.scripts import sync_spaces as legacy
+from app.services import place_enrichment
 
 BASE = "https://saas.mapas.cultura.gov.br"
 RAW = {
@@ -68,6 +70,78 @@ async def test_api_pipeline_normalizes_and_reimports_without_duplicates(db, conn
     assert place["admission"]["price_text"] == "R$ 20"
     assert place["publication_status"] == "review"
     assert connection == {"opened": 2, "closed": 2}
+
+
+def ring(lng, lat, size=0.1):
+    return [
+        [lng, lat],
+        [lng + size, lat],
+        [lng + size, lat + size],
+        [lng, lat + size],
+        [lng, lat],
+    ]
+
+
+SE = {
+    "code": "09",
+    "name": "Sé",
+    "zone": "Centro",
+    "region": "Centro",
+    "geometry": {"type": "Polygon", "coordinates": [ring(-46.7, -23.6)]},
+}
+
+
+@pytest.fixture
+def geosampa(monkeypatch):
+    """GeoSampa enabled; `answer` is the boundary list or an exception."""
+    state = {"answer": [SE]}
+
+    async def fetch(**_):
+        if isinstance(state["answer"], Exception):
+            raise state["answer"]
+        return state["answer"]
+
+    monkeypatch.setattr(
+        place_enrichment, "get_settings", lambda: Settings(geosampa_enabled=True)
+    )
+    monkeypatch.setattr(place_enrichment, "fetch_subprefectures", fetch)
+    return state
+
+
+async def test_sync_adds_zone_and_subprefecture(db, connection, geosampa):
+    def handler(request):
+        return httpx.Response(
+            200, json=[RAW] if request.url.params["@page"] == "1" else []
+        )
+
+    result = await job.sync_places(client=adapter(handler))
+
+    assert result["enrichment"] == {"territory": "geosampa"}
+    place = await db.places.find_one({})
+    assert place["region_zone"] == "Centro"
+    assert place["territory"] == {"subprefecture": "Sé", "region": "Centro"}
+    assert {source["provider"] for source in place["sources"]} == {
+        "mapas_saas",
+        "geosampa",
+    }
+    assert place["admission"]["price_min"] == 20.0
+    stored_run = await db.sync_runs.find_one({})
+    assert stored_run["enrichment"] == {"territory": "geosampa"}
+
+
+async def test_sync_saves_places_when_geosampa_is_down(db, connection, geosampa):
+    geosampa["answer"] = ExternalAPIStatusError("geosampa", "HTTP 503")
+
+    def handler(request):
+        return httpx.Response(
+            200, json=[RAW] if request.url.params["@page"] == "1" else []
+        )
+
+    result = await job.sync_places(client=adapter(handler))
+
+    assert result["status"] == "success"
+    assert result["enrichment"] == {"territory": "unavailable"}
+    assert "region_zone" not in await db.places.find_one({})
 
 
 async def test_snapshot_uses_same_normalizer(tmp_path, db, connection):

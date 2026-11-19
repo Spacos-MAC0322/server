@@ -140,6 +140,10 @@ class PlaceRepository:
                 on_progress(imported)
         return imported
 
+    async def apply_update(self, place_id: str, update: Mapping[str, Any]) -> None:
+        """Apply a prepared MongoDB update (e.g. enrichment backfill) to one place."""
+        await self.collection.update_one({"_id": place_id}, dict(update))
+
     async def find_all(self) -> list[dict]:
         """Return storage documents of every status, ordered by stable identity."""
         return await self.collection.find({}).sort("_id", 1).to_list()
