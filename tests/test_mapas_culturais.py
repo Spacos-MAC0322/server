@@ -175,7 +175,9 @@ def test_normalize(record):
     assert place["location"]["coordinates"] == [-46.63, -23.55]
     assert place["opening_hours"]["text"] == record["horario"]
     assert place["admission"]["price_text"] == record["preco"]
-    assert place["admission"]["is_free"] is None
+    assert place["admission"]["is_free"] is False
+    assert place["admission"]["price_min"] == 10.0
+    assert place["admission"]["price_max"] == 20.0
     assert place["categories"] == ["Museu"]
     assert place["public_access"] is None
     assert place["sources"][0]["updated_at"].tzinfo is not None
@@ -219,6 +221,7 @@ def test_unknown_location_and_visit_information(record, location):
     place = normalize_space(record, BASE)
     assert place["location"] is None
     assert place["admission"]["price_text"] is None
+    assert place["admission"]["is_free"] is None
     assert place["opening_hours"]["text"] is None
     assert place["data_quality"]["stale_source"]
 

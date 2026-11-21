@@ -1,5 +1,6 @@
 from unittest.mock import AsyncMock
 
+import pytest
 from pymongo.errors import AutoReconnect
 
 from app.repositories.place_repository import PlaceRepository
@@ -115,3 +116,119 @@ async def test_discover_returns_friendly_error_when_database_is_unavailable(
     assert response.json() == {
         "detail": "Não foi possível consultar a seleção de espaços no momento."
     }
+
+
+async def test_search_combines_repeated_list_parameters(client, db):
+    await db.places.insert_many(
+        [
+            place(
+                "museu-sul",
+                name="Museu do Ipiranga",
+                categories=["Museu Público"],
+                region_zone="Sul",
+                address={"neighborhood": "Ipiranga"},
+                description={"short": "Acervo histórico."},
+            ),
+            place("cine-leste", categories=["Sala de cinema"], region_zone="Leste"),
+            place("teatro-sul", categories=["Teatro Público"], region_zone="Sul"),
+            place("museu-norte", categories=["Museu"], region_zone="Norte"),
+        ]
+    )
+
+    response = await client.get(
+        "/api/search?categories=arte&categories=cinema&regions=Sul&regions=Leste"
+    )
+
+    assert response.status_code == 200
+    results = response.json()
+    assert [result["id"] for result in results] == ["cine-leste", "museu-sul"]
+    museu = results[1]
+    assert museu["neighborhood"] == "Ipiranga"
+    assert museu["short_description"] == "Acervo histórico."
+    assert museu["location"]["coordinates"] == [-46.63, -23.55]
+    assert "publication_status" not in museu
+
+
+async def test_search_passes_the_map_area_to_the_repository(client, monkeypatch):
+    lookup = AsyncMock(return_value=[place("perto")])
+    monkeypatch.setattr(PlaceRepository, "find_matching", lookup)
+
+    near = await client.get("/api/search?lat=-23.55&lng=-46.63&radius_km=2&q=casa")
+    bounds = await client.get(
+        "/api/search?sw_lat=-23.6&sw_lng=-46.7&ne_lat=-23.5&ne_lng=-46.6"
+    )
+
+    assert near.status_code == bounds.status_code == 200
+    assert [result["id"] for result in near.json()] == ["perto"]
+    assert lookup.await_args_list[0].kwargs == {
+        "bounds": None,
+        "near": (-23.55, -46.63, 2.0),
+    }
+    assert lookup.await_args_list[1].kwargs == {
+        "bounds": (-23.6, -46.7, -23.5, -46.6),
+        "near": None,
+    }
+
+
+async def test_filter_options_with_group_counts_and_known_prices(client, db):
+    await db.places.insert_many(
+        [
+            place("a", categories=["Biblioteca Pública"]),
+            place("b", categories=["Ponto de Leitura"], publication_status="review"),
+        ]
+    )
+
+    response = await client.get("/api/search/filters")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["priced_places"] == 0
+    groups = {group["id"]: group for group in body["groups"]}
+    assert groups["leitura"] == {
+        "id": "leitura",
+        "label": "Bibliotecas e leitura",
+        "count": 1,
+    }
+    assert groups["parques"]["count"] == 0
+
+
+@pytest.mark.parametrize(
+    ("query", "message"),
+    [
+        ("categories=arte&categories=nao-existe", "nao-existe"),
+        ("lat=-23.5&lng=-46.6", "radius_km"),
+        ("regions=Zona%20Sul", "regions"),
+        ("max_price=-5", "max_price"),
+        ("sw_lat=-23.6&sw_lng=-46.7", "juntos"),
+    ],
+)
+async def test_search_rejects_invalid_filters(client, query, message):
+    response = await client.get(f"/api/search?{query}")
+
+    assert response.status_code == 422
+    assert message in str(response.json()["detail"])
+
+
+@pytest.mark.parametrize(
+    ("path", "detail"),
+    [
+        ("/api/search", "Não foi possível buscar os espaços no momento."),
+        (
+            "/api/search/filters",
+            "Não foi possível consultar as opções de filtro no momento.",
+        ),
+    ],
+)
+async def test_search_returns_friendly_error_when_database_is_unavailable(
+    client, monkeypatch, path, detail
+):
+    monkeypatch.setattr(
+        PlaceRepository,
+        "find_matching",
+        AsyncMock(side_effect=AutoReconnect("mongodb://private-database")),
+    )
+
+    response = await client.get(path)
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": detail}

@@ -71,7 +71,7 @@ def test_environment_alias_beats_dotenv_alias(
         ({"auth_enabled": True}, "requires JWT_SECRET"),
         ({"jwt_secret": "short-secret"}, "at least 32"),
         ({"mapas_culturais_enabled": True}, "MAPAS_CULTURAIS_ENABLED"),
-        ({"geosampa_enabled": True}, "GEOSAMPA_ENABLED"),
+        ({"geosampa_enabled": True, "geosampa_base_url": ""}, "GEOSAMPA_ENABLED"),
         ({"sptrans_enabled": True}, "SPTRANS_ENABLED"),
         (
             {"sptrans_enabled": True, "sptrans_base_url": "https://example.com"},

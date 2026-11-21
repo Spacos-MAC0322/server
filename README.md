@@ -82,7 +82,7 @@ O `.env` é interpretado como dados, nunca executado como código de shell.
 | `JWT_SECRET` | Sem padrão; obrigatório para iniciar a API (assina os tokens de login), com pelo menos 32 caracteres não vazios. Se omitido, `start.sh` gera um segredo temporário |
 | `JWT_EXPIRE_MINUTES` | `1440` (1 dia); validade do token de login, deve ser positivo |
 | `MAPAS_CULTURAIS_ENABLED` / `MAPAS_CULTURAIS_BASE_URL` | Desabilitado; ao habilitar, exige URL HTTP(S) |
-| `GEOSAMPA_ENABLED` / `GEOSAMPA_BASE_URL` | Desabilitado; ao habilitar, exige URL HTTP(S) |
+| `GEOSAMPA_ENABLED` / `GEOSAMPA_BASE_URL` | Desabilitado; URL padrão `https://wfs.geosampa.prefeitura.sp.gov.br`. Usado só pela sincronização, para preencher a zona e a subprefeitura de cada lugar |
 | `SPTRANS_ENABLED` / `SPTRANS_BASE_URL` / `SPTRANS_TOKEN` | Desabilitado; ao habilitar, exige URL e token |
 | `SPTRANS_GTFS_PATH` | Caminho do ZIP GTFS oficial, usado para localizar paradas e estimar conexões diretas |
 | `OPEN_METEO_ENABLED` / `OPEN_METEO_BASE_URL` | Desabilitado; URL padrão `https://api.open-meteo.com` |
@@ -106,7 +106,7 @@ Para gerar um segredo JWT localmente, pode-se usar
 `python -c "import secrets; print(secrets.token_urlsafe(32))"` e guardá-lo no `.env`.
 
 Login e proteção de rotas estão descritos em [Autenticação](#autenticação); os
-demais campos preparam a configuração dos adaptadores. URLs de Mapas Culturais, GeoSampa e SPTrans
+demais campos preparam a configuração dos adaptadores. URLs de Mapas Culturais e SPTrans
 ficam sem padrão até confirmar os endpoints efetivamente usados. Open-Meteo
 público não exige token para o uso previsto. Os comandos diretos do banco usam
 `DatabaseSettings` e não exigem JWT ou credenciais de integrações.
@@ -170,9 +170,12 @@ de uma área de plausibilidade de SP; não substituem a confirmação do municí
 Coordenadas ausentes/inválidas ficam nulas, para revisão e fora do mapa.
 
 Nome, categoria da fonte, endereço, horário e preço textual são preservados.
-Campos ausentes ficam desconhecidos; não se inferem gratuidade, preço numérico,
-acesso público ou horário a partir da descrição. `public` não significa entrada
-livre. Todos os novos locais entram como `publication_status: review`.
+Campos ausentes ficam desconhecidos; não se inferem acesso público ou horário a
+partir da descrição. `public` não significa entrada livre. Gratuidade e faixa de
+preço (`admission.is_free`, `price_min`, `price_max`) vêm apenas do texto de preço
+da fonte, quando ele diz "gratuito"/"entrada franca" ou traz valores em reais
+(`app/core/price_text.py`); sem isso, ficam nulos.
+Todos os novos locais entram como `publication_status: review`.
 A categoria da fonte também alimenta `categories`, sem impor taxonomia própria.
 
 Reexecuções atualizam por `source_keys`, mantendo a identidade `mapas_saas:space:ID`
@@ -187,6 +190,30 @@ não substituem os dados existentes. Falhas durante a escrita podem deixar uma
 importação parcial, registrada como `partial` com a quantidade concluída;
 reexecutar permite retomar sem duplicar. Nada é removido por ausência na fonte.
 O histórico distingue `running`, `success`, `partial` e `error`.
+
+### Zona e subprefeitura (GeoSampa)
+
+Antes de gravar, a sincronização localiza cada espaço nas 32 subprefeituras do
+GeoSampa (`app/services/place_enrichment.py`) e preenche `region_zone` (Centro,
+Norte, Sul, Leste ou Oeste), `territory.subprefecture` e `territory.region`, com
+uma entrada `geosampa` em `sources`. Os contornos ficam salvos na coleção
+`territories`: se o GeoSampa estiver desligado ou fora do ar, a sincronização usa
+os últimos contornos salvos. Sem nenhum contorno, os espaços são gravados sem zona.
+O resultado aparece em `enrichment.territory` do `sync_runs`: `geosampa`, `stored`,
+`unavailable` ou `disabled`. Para ativar:
+
+```powershell
+$env:GEOSAMPA_ENABLED = "true"
+```
+
+Espaços importados antes disso são completados sem nova coleta:
+
+```powershell
+python -m app.jobs.enrich_places
+```
+
+O comando só preenche zona e preço que estejam vazios; valores já existentes,
+inclusive de curadoria, não são alterados. Pode ser repetido sem efeito colateral.
 
 ## Coleta local para testes offline
 
@@ -522,6 +549,49 @@ máximo uma requisição por segundo, guarda as respostas por 24 horas (a mesma
 busca, ignorando maiúsculas e espaços, não sai do servidor) e só é chamado
 quando o usuário envia a busca, nunca para autocompletar. Os mapas do frontend
 já exibem a atribuição do OpenStreetMap.
+
+## Busca com filtros
+
+`GET /api/search` alimenta ao mesmo tempo os pinos do mapa e os cards da página
+Explorar (user story #6). Todos os filtros informados precisam valer; dentro de
+uma mesma lista, basta um dos valores:
+
+| Parâmetro | Exemplo | Significado |
+| --- | --- | --- |
+| `q` | `q=sao mateus` | Texto livre no nome, bairro, categoria, subprefeitura ou zona; ignora acentos e exige todas as palavras |
+| `categories` (repetível) | `categories=arte&categories=musica` | Grupos de interesse de `GET /api/search/filters` |
+| `regions` (repetível) | `regions=Centro&regions=Leste` | Zonas: Centro, Norte, Sul, Leste, Oeste (preenchidas pelo GeoSampa) |
+| `is_free` | `is_free=true` | Só entrada gratuita |
+| `max_price` | `max_price=20` | Até R$ 20; inclui gratuitos e deixa de fora preço desconhecido |
+| área do mapa | `sw_lat`, `sw_lng`, `ne_lat`, `ne_lng` | Os quatro juntos, como em `/api/places` |
+| raio | `lat`, `lng`, `radius_km` | Os três juntos; resultados do mais próximo ao mais distante |
+
+Sem raio, a ordem é alfabética. A resposta tem o formato dos cards
+(`PlaceCardSchema`: bairro e resumo incluídos). Combinação inválida (por exemplo,
+área e raio juntos, ou um grupo inexistente) responde HTTP 422; banco
+indisponível, HTTP 503.
+
+`GET /api/search/filters` devolve as opções do painel de filtros:
+
+- `groups`: os grupos de interesse, na ordem de exibição, com quantos espaços
+  publicados há em cada um;
+- `priced_places`: quantos desses espaços têm gratuidade ou preço conhecidos.
+  Com 0, o frontend esconde os filtros de preço, que não teriam resultado. No
+  Mapas Culturais de São Paulo, o campo de preço vem vazio em todos os espaços.
+
+Os grupos ficam em `app/services/interest_groups.py`. Três em cada quatro
+espaços são "Ponto de Cultura", então o tipo do Mapas Culturais sozinho quase não
+diferencia. Cada grupo procura:
+
+- palavras-chave inteiras no tipo e no nome ("Escola de Samba..." entra em
+  Música pelo nome; "coral" não pega "Cora Coralina"), com exclusões ("Escola de
+  Samba" não é curso);
+- frases explícitas na descrição curta ("sala de cinema", "aulas de dança").
+  Palavras soltas ali não contam: "produtora de filmes" não faz de uma
+  gravadora um cinema. A descrição longa fica de fora.
+
+Um espaço pode estar em mais de um grupo; criar ou ajustar um grupo é uma linha
+nessa tabela.
 
 ## Verificação
 

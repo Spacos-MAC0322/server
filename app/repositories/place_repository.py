@@ -140,6 +140,10 @@ class PlaceRepository:
                 on_progress(imported)
         return imported
 
+    async def apply_update(self, place_id: str, update: Mapping[str, Any]) -> None:
+        """Apply a prepared MongoDB update (e.g. enrichment backfill) to one place."""
+        await self.collection.update_one({"_id": place_id}, dict(update))
+
     async def find_all(self) -> list[dict]:
         """Return storage documents of every status, ordered by stable identity."""
         return await self.collection.find({}).sort("_id", 1).to_list()
@@ -152,24 +156,8 @@ class PlaceRepository:
         The location_2dsphere index uses GeoJSON coordinates [lng, lat]. As in
         find_in_bounds, the caller applies publication filters when needed.
         """
-        _validate_coordinate("lat", lat, 90)
-        _validate_coordinate("lng", lng, 180)
-        if (
-            isinstance(radius_meters, bool)
-            or not isinstance(radius_meters, (int, float))
-            or not 0 <= radius_meters <= float_info.max
-        ):
-            raise ValueError("radius_meters must be finite and nonnegative")
-
         return await self.collection.find(
-            {
-                "location": {
-                    "$nearSphere": {
-                        "$geometry": {"type": "Point", "coordinates": [lng, lat]},
-                        "$maxDistance": float(radius_meters),
-                    }
-                }
-            }
+            {"location": _near_clause(lat, lng, radius_meters)}
         ).to_list()
 
     async def find_in_bounds(
@@ -186,34 +174,72 @@ class PlaceRepository:
         Missing/null locations are naturally excluded. Publication filtering and
         response schemas belong to the calling service, as with find_all().
         """
-        for name, value, limit in (
-            ("sw_lat", sw_lat, 90),
-            ("ne_lat", ne_lat, 90),
-            ("sw_lng", sw_lng, 180),
-            ("ne_lng", ne_lng, 180),
-        ):
-            _validate_coordinate(name, value, limit)
-        if sw_lat >= ne_lat or sw_lng >= ne_lng:
-            raise ValueError("Southwest bounds must be below northeast bounds")
-        if ne_lng - sw_lng >= 180:
-            raise ValueError("Local bounds must span less than 180 degrees longitude")
-        ring = [
-            [sw_lng, sw_lat],
-            [ne_lng, sw_lat],
-            [ne_lng, ne_lat],
-            [sw_lng, ne_lat],
-            [sw_lng, sw_lat],
-        ]
         return (
             await self.collection.find(
-                {
-                    "location": {
-                        "$geoWithin": {
-                            "$geometry": {"type": "Polygon", "coordinates": [ring]},
-                        }
-                    }
-                }
+                {"location": _bounds_clause(sw_lat, sw_lng, ne_lat, ne_lng)}
             )
             .sort("_id", 1)
             .to_list()
         )
+
+    async def find_matching(
+        self,
+        conditions: list[dict],
+        *,
+        bounds: tuple[float, float, float, float] | None = None,
+        near: tuple[float, float, float] | None = None,
+        projection: Mapping[str, Any] | None = None,
+    ) -> list[dict]:
+        """Places meeting every condition, optionally within bounds or a radius.
+
+        `near` is (lat, lng, radius_km); its results come nearest first, others
+        in storage order. Conditions are built by the search service.
+        """
+        query: dict[str, Any] = {"$and": conditions} if conditions else {}
+        if bounds is not None and near is not None:
+            raise ValueError("Use bounds or near, not both")
+        if bounds is not None:
+            query["location"] = _bounds_clause(*bounds)
+        elif near is not None:
+            lat, lng, radius_km = near
+            query["location"] = _near_clause(lat, lng, radius_km * 1000)
+        return await self.collection.find(query, projection).to_list()
+
+
+def _near_clause(lat: float, lng: float, radius_meters: float) -> dict:
+    _validate_coordinate("lat", lat, 90)
+    _validate_coordinate("lng", lng, 180)
+    if (
+        isinstance(radius_meters, bool)
+        or not isinstance(radius_meters, (int, float))
+        or not 0 <= radius_meters <= float_info.max
+    ):
+        raise ValueError("radius_meters must be finite and nonnegative")
+    return {
+        "$nearSphere": {
+            "$geometry": {"type": "Point", "coordinates": [lng, lat]},
+            "$maxDistance": float(radius_meters),
+        }
+    }
+
+
+def _bounds_clause(sw_lat: float, sw_lng: float, ne_lat: float, ne_lng: float) -> dict:
+    for name, value, limit in (
+        ("sw_lat", sw_lat, 90),
+        ("ne_lat", ne_lat, 90),
+        ("sw_lng", sw_lng, 180),
+        ("ne_lng", ne_lng, 180),
+    ):
+        _validate_coordinate(name, value, limit)
+    if sw_lat >= ne_lat or sw_lng >= ne_lng:
+        raise ValueError("Southwest bounds must be below northeast bounds")
+    if ne_lng - sw_lng >= 180:
+        raise ValueError("Local bounds must span less than 180 degrees longitude")
+    ring = [
+        [sw_lng, sw_lat],
+        [ne_lng, sw_lat],
+        [ne_lng, ne_lat],
+        [sw_lng, ne_lat],
+        [sw_lng, sw_lat],
+    ]
+    return {"$geoWithin": {"$geometry": {"type": "Polygon", "coordinates": [ring]}}}
