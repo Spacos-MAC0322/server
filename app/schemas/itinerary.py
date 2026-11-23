@@ -1,4 +1,4 @@
-"""Read contracts for itineraries and optional daily weather."""
+"""Read and write contracts for itineraries and optional daily weather."""
 
 import re
 from datetime import date as Date
@@ -52,6 +52,68 @@ class ItineraryValidationRequest(BaseModel):
     stops: list[ItineraryValidationStop]
 
 
+MAX_TITLE_LENGTH = 120
+MAX_STOPS = 50
+
+
+class ItineraryCreate(BaseModel):
+    """Body to save an itinerary of the logged-in user.
+
+    Stops keep the order given in the list; conflict_warning sent by the client
+    is ignored, since the server recalculates it on every save.
+    """
+
+    title: str = Field(min_length=1, max_length=MAX_TITLE_LENGTH)
+    date: Date | None = None
+    stops: list[ItineraryValidationStop] = Field(
+        default_factory=list, max_length=MAX_STOPS
+    )
+
+    @field_validator("title")
+    @classmethod
+    def strip_title(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Informe um nome para o roteiro.")
+        return value
+
+    @field_validator("stops")
+    @classmethod
+    def validate_stops(
+        cls, stops: list[ItineraryValidationStop]
+    ) -> list[ItineraryValidationStop]:
+        orders = [stop.order for stop in stops]
+        if len(set(orders)) != len(orders):
+            raise ValueError("Cada parada precisa de uma ordem diferente.")
+        for stop in stops:
+            start, end = stop.planned_start_time, stop.planned_end_time
+            # HH:MM and HH:MM:SS compare correctly as text once zero-padded.
+            if start and end and _pad_seconds(end) <= _pad_seconds(start):
+                raise ValueError(
+                    "O horário de saída precisa ser depois do horário de chegada."
+                )
+        return stops
+
+
+class ItineraryUpdate(ItineraryCreate):
+    """PUT body: replaces title, date and every stop of the itinerary."""
+
+
+class ItinerarySummary(BaseModel):
+    """Itinerary entry in the logged-in user's list."""
+
+    id: str = Field(validation_alias=AliasChoices("id", "_id"))
+    title: str
+    date: str | None = None
+    stop_count: int = Field(ge=0)
+    created_at: datetime | str | None = None
+    updated_at: datetime | str | None = None
+
+
+def _pad_seconds(value: str) -> str:
+    return value if len(value) == 8 else f"{value}:00"
+
+
 class BusLineSchema(BaseModel):
     """GTFS bus route and direction; route_id is not an Olho Vivo line code."""
 
@@ -82,3 +144,4 @@ class ItineraryResponse(WeatherResponse):
     stops: list[dict[str, Any]]
     preferences: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime | str | None = None
+    updated_at: datetime | str | None = None
