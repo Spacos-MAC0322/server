@@ -30,9 +30,6 @@ class ItineraryRepository:
         self.collection = database[ITINERARIES_COLLECTION]
         self.places = database[PLACES_COLLECTION]
 
-    async def find_by_id(self, itinerary_id: str) -> dict | None:
-        return await self.collection.find_one({"_id": itinerary_id})
-
     async def find_opening_hours(self, place_ids: Collection[str]) -> dict[str, dict]:
         places = await self.places.find(
             {"_id": {"$in": list(place_ids)}}, {"opening_hours": 1}

@@ -15,6 +15,7 @@ from app.core.http_client import (
     ExternalAPITimeoutError,
     get_http_client,
 )
+from app.core.security import get_current_user
 from app.integrations import open_meteo
 from app.integrations.open_meteo import OpenMeteoClient
 from app.main import app
@@ -23,6 +24,14 @@ from app.services import itinerary_planner
 from app.services.itinerary_planner import ItineraryPlanner
 
 TODAY = date(2026, 11, 3)
+
+
+@pytest.fixture
+def owner(monkeypatch):
+    """Requests act as the user who owns the stored itineraries."""
+    monkeypatch.setitem(
+        app.dependency_overrides, get_current_user, lambda: {"_id": "owner"}
+    )
 
 
 @pytest.fixture
@@ -123,7 +132,7 @@ async def test_disabled_feature_is_optional(client, weather_api):
     ],
 )
 async def test_failure_preserves_weather_and_itinerary_routes(
-    client, db, weather_api, monkeypatch, error_type, caplog
+    client, db, owner, weather_api, monkeypatch, error_type, caplog
 ):
     monkeypatch.setattr(
         OpenMeteoClient,
@@ -162,7 +171,7 @@ async def test_slow_api_has_short_deadline(client, weather_api, monkeypatch):
 
 
 async def test_itinerary_enrichment_reuses_cache_and_does_not_write(
-    client, db, weather_api
+    client, db, owner, weather_api
 ):
     itinerary = {
         "_id": "tour",
@@ -189,7 +198,9 @@ async def test_itinerary_enrichment_reuses_cache_and_does_not_write(
 
 
 @pytest.mark.parametrize("day", [None, "invalid", "2027-01-01", "2026-11-02"])
-async def test_itinerary_without_forecast_keeps_stops(client, db, weather_api, day):
+async def test_itinerary_without_forecast_keeps_stops(
+    client, db, owner, weather_api, day
+):
     await db.itineraries.insert_one(
         {
             "_id": "tour",
@@ -209,17 +220,37 @@ async def test_itinerary_without_forecast_keeps_stops(client, db, weather_api, d
 
 
 async def test_missing_itinerary_returns_404_without_fetching_weather(
-    client, weather_api
+    client, owner, weather_api
 ):
     response = await client.get("/api/itineraries/missing")
     assert response.status_code == 404
     assert weather_api == []
 
 
-async def test_database_error_returns_503(client, weather_api, monkeypatch):
+async def test_other_users_itinerary_returns_404_without_fetching_weather(
+    client, db, owner, weather_api
+):
+    await db.itineraries.insert_one(
+        {"_id": "tour", "user_id": "someone-else", "title": "Passeio", "stops": []}
+    )
+    response = await client.get("/api/itineraries/tour")
+    assert response.status_code == 404
+    assert weather_api == []
+
+
+async def test_itinerary_requires_authentication(client, db, weather_api):
+    await db.itineraries.insert_one(
+        {"_id": "tour", "user_id": "owner", "title": "Passeio", "stops": []}
+    )
+    response = await client.get("/api/itineraries/tour")
+    assert response.status_code == 401
+    assert weather_api == []
+
+
+async def test_database_error_returns_503(client, owner, weather_api, monkeypatch):
     monkeypatch.setattr(
         ItineraryRepository,
-        "find_by_id",
+        "find_owned",
         AsyncMock(side_effect=AutoReconnect("secret database details")),
     )
     response = await client.get("/api/itineraries/tour")
@@ -256,4 +287,4 @@ def test_openapi_exposes_weather_and_itinerary_read_contracts():
         "$ref"
     ].endswith("/WeatherResponse")
     itinerary = paths["/api/itineraries/{itinerary_id}"]["get"]
-    assert {"200", "404", "503"} <= itinerary["responses"].keys()
+    assert {"200", "401", "404", "503"} <= itinerary["responses"].keys()

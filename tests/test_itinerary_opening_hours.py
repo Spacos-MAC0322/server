@@ -5,11 +5,20 @@ import pytest
 from pymongo.errors import AutoReconnect
 
 from app.core.http_client import get_http_client
+from app.core.security import get_current_user
 from app.main import app
 from app.repositories.itinerary_repository import ItineraryRepository
 
 WEEKLY = "Quarta a segunda, das 11h às 19h. Fechado às terças-feiras."
 CLOSED = "O local estará fechado no horário planejado."
+
+
+@pytest.fixture
+def owner(monkeypatch):
+    """Requests act as the user who owns the stored itineraries."""
+    monkeypatch.setitem(
+        app.dependency_overrides, get_current_user, lambda: {"_id": "owner"}
+    )
 
 
 @pytest.fixture
@@ -62,7 +71,7 @@ async def offline_weather(monkeypatch):
     ],
 )
 async def test_itinerary_checks_each_visit_against_weekly_hours(
-    client, db, offline_weather, day, start, hours, warning
+    client, db, owner, offline_weather, day, start, hours, warning
 ):
     await db.places.insert_one({"_id": "museum", "opening_hours": {"text": hours}})
     stops = [
@@ -71,7 +80,13 @@ async def test_itinerary_checks_each_visit_against_weekly_hours(
         {"place_id": "museum", "order": 3},
     ]
     await db.itineraries.insert_one(
-        {"_id": "route", "title": "Passeio", "date": day, "stops": stops}
+        {
+            "_id": "route",
+            "user_id": "owner",
+            "title": "Passeio",
+            "date": day,
+            "stops": stops,
+        }
     )
 
     response = await client.get("/api/itineraries/route")
@@ -84,11 +99,14 @@ async def test_itinerary_checks_each_visit_against_weekly_hours(
     assert (await db.itineraries.find_one({"_id": "route"}))["stops"] == stops
 
 
-async def test_legacy_arrival_time_and_cleared_conflict(client, db, offline_weather):
+async def test_legacy_arrival_time_and_cleared_conflict(
+    client, db, owner, offline_weather
+):
     await db.places.insert_one({"_id": "museum", "opening_hours": {"text": WEEKLY}})
     await db.itineraries.insert_one(
         {
             "_id": "route",
+            "user_id": "owner",
             "title": "Passeio",
             "date": "2026-11-18",
             "stops": [
