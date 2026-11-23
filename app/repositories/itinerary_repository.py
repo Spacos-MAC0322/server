@@ -125,6 +125,7 @@ def _stored_stops(stops: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
             "order": stop["order"],
             "planned_start_time": stop.get("planned_start_time"),
             "planned_end_time": stop.get("planned_end_time"),
+            "event_id": stop.get("event_id"),
             "conflict_warning": stop.get("conflict_warning"),
         }
         for stop in sorted(stops, key=lambda stop: stop["order"])

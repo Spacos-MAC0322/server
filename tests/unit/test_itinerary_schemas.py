@@ -141,3 +141,25 @@ def test_summary_reads_mongo_id():
         "created_at": None,
         "updated_at": None,
     }
+
+
+@pytest.mark.parametrize("schema", [ItineraryCreate, ItineraryUpdate])
+def test_write_preserves_an_optional_event_id(schema):
+    body = schema(
+        title="Exposição", stops=[stop(1) | {"event_id": "exposicao"}, stop(2)]
+    )
+    assert body.stops[0].model_dump()["event_id"] == "exposicao"
+    assert body.stops[1].event_id is None
+
+
+@pytest.mark.parametrize("schema", [ItineraryCreate, ItineraryUpdate])
+@pytest.mark.parametrize("order", [-(2**31), 2**31 - 1])
+def test_write_accepts_bson_int_boundaries(schema, order):
+    assert schema(title="x", stops=[stop(order)]).stops[0].order == order
+
+
+@pytest.mark.parametrize("schema", [ItineraryCreate, ItineraryUpdate])
+@pytest.mark.parametrize("order", [-(2**31) - 1, 2**31, -(2**63) - 1, 2**63])
+def test_write_rejects_order_outside_bson_int_range(schema, order):
+    with pytest.raises(ValidationError):
+        schema(title="x", stops=[stop(order)])

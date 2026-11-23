@@ -28,6 +28,7 @@ async def test_create_stores_stops_in_visit_order_with_known_fields(repository, 
                 "planned_start_time": "10:00",
                 "planned_end_time": "11:00",
                 "conflict_warning": "Fechado",
+                "event_id": "exposicao",
                 "unexpected": "dropped",
             },
         ],
@@ -45,6 +46,7 @@ async def test_create_stores_stops_in_visit_order_with_known_fields(repository, 
             "planned_start_time": "10:00",
             "planned_end_time": "11:00",
             "conflict_warning": "Fechado",
+            "event_id": "exposicao",
         },
         {
             "place_id": "b",
@@ -52,6 +54,7 @@ async def test_create_stores_stops_in_visit_order_with_known_fields(repository, 
             "planned_start_time": "14:00",
             "planned_end_time": None,
             "conflict_warning": None,
+            "event_id": None,
         },
     ]
     assert created["created_at"] == created["updated_at"]
@@ -112,12 +115,13 @@ async def test_replace_owned_replaces_content_and_keeps_owner_and_creation(
         "ana",
         title="Novo",
         date=None,
-        stops=[{"place_id": "b", "order": 1}],
+        stops=[{"place_id": "b", "order": 1, "event_id": "sessao"}],
     )
 
     assert replaced["title"] == "Novo"
     assert replaced["date"] is None
     assert [stop["place_id"] for stop in replaced["stops"]] == ["b"]
+    assert replaced["stops"][0]["event_id"] == "sessao"
     assert replaced["user_id"] == "ana"
     assert replaced["preferences"] == {"budget": 50}
     # MongoDB hands dates back without tzinfo; they are stored in UTC.

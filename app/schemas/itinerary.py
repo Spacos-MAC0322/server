@@ -67,6 +67,14 @@ MAX_TITLE_LENGTH = 120
 MAX_STOPS = 50
 
 
+class ItineraryWriteStop(ItineraryValidationStop):
+    """A persisted visit, including an optional link to a cultural event."""
+
+    # The MongoDB validator requires BSON int (signed 32 bits), not long.
+    order: int = Field(strict=True, ge=-(2**31), le=2**31 - 1)
+    event_id: str | None = None
+
+
 class ItineraryCreate(BaseModel):
     """Body to save an itinerary of the logged-in user.
 
@@ -76,9 +84,7 @@ class ItineraryCreate(BaseModel):
 
     title: str = Field(min_length=1, max_length=MAX_TITLE_LENGTH)
     date: Date | None = None
-    stops: list[ItineraryValidationStop] = Field(
-        default_factory=list, max_length=MAX_STOPS
-    )
+    stops: list[ItineraryWriteStop] = Field(default_factory=list, max_length=MAX_STOPS)
 
     @field_validator("title")
     @classmethod
@@ -91,8 +97,8 @@ class ItineraryCreate(BaseModel):
     @field_validator("stops")
     @classmethod
     def validate_stops(
-        cls, stops: list[ItineraryValidationStop]
-    ) -> list[ItineraryValidationStop]:
+        cls, stops: list[ItineraryWriteStop]
+    ) -> list[ItineraryWriteStop]:
         orders = [stop.order for stop in stops]
         if len(set(orders)) != len(orders):
             raise ValueError("Cada parada precisa de uma ordem diferente.")

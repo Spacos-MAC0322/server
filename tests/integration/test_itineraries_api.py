@@ -7,8 +7,10 @@ import pytest
 from pymongo.errors import AutoReconnect
 
 from app.core.http_client import get_http_client
+from app.core.security import create_access_token
 from app.main import app
 from app.repositories.itinerary_repository import ItineraryRepository
+from app.repositories.user_repository import UserRepository
 
 ANA = {"name": "Ana", "email": "ana@example.com", "password": "senha-segura"}
 BRUNO = {"name": "Bruno", "email": "bruno@example.com", "password": "senha-segura"}
@@ -323,3 +325,70 @@ def test_openapi_documents_itinerary_write_routes():
     assert {"200", "401", "503"} <= collection["get"]["responses"].keys()
     assert {"200", "401", "404", "422", "503"} <= item["put"]["responses"].keys()
     assert {"204", "401", "404", "503"} <= item["delete"]["responses"].keys()
+
+
+async def test_create_and_edit_keep_the_event_association(client, db, places):
+    headers = await auth_headers(client)
+    draft = body(stops=[{"place_id": "museu", "order": 1, "event_id": "exposicao"}])
+    created = await client.post("/api/itineraries", json=draft, headers=headers)
+    assert created.status_code == 201
+    assert created.json()["stops"][0]["event_id"] == "exposicao"
+    path = f"/api/itineraries/{created.json()['id']}"
+    fetched = (await client.get(path, headers=headers)).json()
+
+    replaced = await client.put(
+        path, json=fetched | {"title": "Novo título"}, headers=headers
+    )
+
+    assert replaced.status_code == 200
+    assert replaced.json()["stops"][0]["event_id"] == "exposicao"
+    stored = await db.itineraries.find_one({"_id": created.json()["id"]})
+    assert stored["stops"][0]["event_id"] == "exposicao"
+
+
+@pytest.mark.parametrize("order", [-(2**31) - 1, 2**31, -(2**63) - 1, 2**63])
+async def test_out_of_range_order_returns_422_without_writing(
+    client, db, places, order
+):
+    headers = await auth_headers(client)
+    created = await client.post("/api/itineraries", json=body(), headers=headers)
+    itinerary_id = created.json()["id"]
+    before = await db.itineraries.find_one({"_id": itinerary_id})
+    draft = body(stops=[{"place_id": "museu", "order": order}])
+    for method, path in [
+        ("POST", "/api/itineraries"),
+        ("PUT", f"/api/itineraries/{itinerary_id}"),
+    ]:
+        response = await client.request(method, path, json=draft, headers=headers)
+        assert response.status_code == 422
+    assert await db.itineraries.count_documents({}) == 1
+    assert await db.itineraries.find_one({"_id": itinerary_id}) == before
+
+
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("POST", "/api/itineraries"),
+        ("GET", "/api/itineraries"),
+        ("GET", "/api/itineraries/any"),
+        ("PUT", "/api/itineraries/any"),
+        ("DELETE", "/api/itineraries/any"),
+    ],
+)
+async def test_authentication_database_failure_returns_503(
+    client, monkeypatch, method, path
+):
+    token, _ = create_access_token("ana")
+    monkeypatch.setattr(
+        UserRepository,
+        "get_by_id",
+        AsyncMock(side_effect=AutoReconnect("secret database details")),
+    )
+    response = await client.request(
+        method,
+        path,
+        json=body(),
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 503
+    assert "secret" not in response.text
