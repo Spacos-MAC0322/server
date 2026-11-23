@@ -1,6 +1,6 @@
 """Write contracts for saving and replacing itineraries."""
 
-from datetime import date
+from datetime import UTC, date, datetime, timedelta, timezone
 
 import pytest
 from pydantic import ValidationError
@@ -9,6 +9,7 @@ from app.schemas.itinerary import (
     MAX_STOPS,
     MAX_TITLE_LENGTH,
     ItineraryCreate,
+    ItineraryResponse,
     ItinerarySummary,
     ItineraryUpdate,
 )
@@ -100,6 +101,34 @@ def test_conflict_warning_sent_by_client_is_parsed_but_not_trusted():
     )
     dumped = body.stops[0].model_dump(exclude={"conflict_warning"})
     assert "conflict_warning" not in dumped
+
+
+@pytest.mark.parametrize("schema", [ItinerarySummary, ItineraryResponse])
+def test_naive_mongo_timestamps_are_returned_as_utc(schema):
+    naive = datetime(2026, 11, 23, 6, 9, 30, 410000)
+    aware = naive.replace(tzinfo=UTC)
+    parsed = schema(
+        _id="abc",
+        id="abc",
+        title="Passeio",
+        stop_count=0,
+        stops=[],
+        created_at=naive,
+        updated_at=aware,
+    )
+    assert parsed.created_at == aware
+    assert parsed.updated_at == aware
+    dumped = parsed.model_dump(mode="json")
+    assert dumped["created_at"] == dumped["updated_at"] == "2026-11-23T06:09:30.410000Z"
+
+
+def test_timestamps_in_other_timezones_and_strings_are_kept():
+    offset = datetime(2026, 11, 23, 3, 0, tzinfo=timezone(timedelta(hours=-3)))
+    parsed = ItinerarySummary(
+        _id="abc", title="x", stop_count=0, created_at=offset, updated_at="legado"
+    )
+    assert parsed.created_at == offset
+    assert parsed.updated_at == "legado"
 
 
 def test_summary_reads_mongo_id():

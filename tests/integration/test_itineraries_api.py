@@ -143,6 +143,24 @@ async def test_create_list_get_replace_and_delete(client, db, places):
     assert (await client.get("/api/itineraries", headers=headers)).json() == []
 
 
+async def test_every_response_returns_timestamps_in_utc(client, places):
+    headers = await auth_headers(client)
+    created = (
+        await client.post("/api/itineraries", json=body(), headers=headers)
+    ).json()
+    path = f"/api/itineraries/{created['id']}"
+    responses = [
+        created,
+        (await client.get("/api/itineraries", headers=headers)).json()[0],
+        (await client.get(path, headers=headers)).json(),
+        (await client.put(path, json=body(), headers=headers)).json(),
+    ]
+    for payload in responses:
+        for field in ("created_at", "updated_at"):
+            assert payload[field].endswith("Z"), (field, payload[field])
+    assert len({payload["created_at"] for payload in responses}) == 1
+
+
 async def test_stops_are_returned_in_order_whatever_the_list_order(client, places):
     headers = await auth_headers(client)
     response = await client.post(
