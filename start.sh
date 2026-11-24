@@ -13,6 +13,11 @@ MONGO_PID=""
 
 die() { printf '\nErro: %s\n' "$*" >&2; exit 1; }
 log() { printf '\n%s\n' "$*"; }
+# Relative paths given by the user refer to the folder where the command ran.
+absolute_path() {
+    if [[ "$1" == /* || "$1" =~ ^[A-Za-z]: ]]; then printf '%s\n' "$1"
+    else printf '%s/%s\n' "$PWD" "$1"; fi
+}
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -25,6 +30,11 @@ while [[ $# -gt 0 ]]; do
             COLLECT_ARGS+=("$1" "$2")
             shift 2
             ;;
+        --from-file)
+            [[ $# -ge 2 && -n "$2" ]] || die '--from-file exige um arquivo.'
+            COLLECT_ARGS+=("$1" "$(absolute_path "$2")")
+            shift 2
+            ;;
         --help|-h)
             cat <<'HELP'
 Uso: bash start.sh [opcoes]
@@ -32,6 +42,8 @@ MongoDB -> esquemas e indices -> testes -> importacao opcional -> API FastAPI.
 
   --check             Prepara e testa sem iniciar a API; importa se solicitado
   --refresh-data      Faz nova coleta completa e importa o snapshot no banco
+  --from-file ARQUIVO Com --refresh-data: usa o JSON baixado pelo navegador
+                      em vez da coleta pela rede
   --sync-latest       Importa o ultimo snapshot completo, sem nova coleta
   --publish-imported  Publica para teste somente os locais importados em review
                       com localizacao valida; exige uma opcao de importacao

@@ -7,7 +7,11 @@ import pytest
 from app.core.config import Settings
 from app.core.exceptions import ExternalServiceInvalidResponse
 from app.integrations.mapas_culturais import MapasCulturaisClient
-from app.scripts.export_mapas_spaces import export_spaces
+from app.scripts.export_mapas_spaces import (
+    checksum,
+    export_spaces,
+    snapshot_from_file,
+)
 
 
 @pytest.fixture
@@ -152,3 +156,54 @@ async def test_nonempty_directory_and_invalid_options_are_rejected(tmp_path):
     with pytest.raises(FileExistsError):
         await export_spaces(tmp_path, client=client)
     assert (tmp_path / "keep.txt").read_text() == "keep"
+
+
+def downloaded(tmp_path, rows, name="espacos.json"):
+    """A list saved from the browser, as /api/space/find returns it."""
+    path = tmp_path / name
+    path.write_text(json.dumps(rows, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
+async def test_manual_download_becomes_a_complete_validated_snapshot(tmp_path):
+    other_city = dict(record(3), En_Municipio="Guarulhos")
+    source = downloaded(tmp_path, [record(1), record(2), record(1), other_city])
+    output = tmp_path / "snapshot"
+
+    report = await snapshot_from_file(source, output)
+
+    assert report["complete"] is True
+    assert report["origin"] == report["stop_reason"] == "manual_download"
+    assert report["source_file"] == "espacos.json"
+    assert report["source_sha256"] == checksum(source)
+    assert report["remote_count"] is None
+    assert report["received"] == 4
+    assert report["unique_records"] == 3
+    assert report["duplicates"] == 1
+    assert report["normalized"] == report["with_location"] == 2
+    assert report["excluded"] == 1
+    assert report["raw_sha256"] == checksum(output / "spaces_raw.json")
+    assert report["query"]["En_Municipio"] == "ILIKE(São Paulo)"
+    manifest = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest == report
+
+
+@pytest.mark.parametrize(
+    "content",
+    ['{"error": "challenge"}', "[]", '[{"name": "sem id"}]', "<html>Just a moment"],
+)
+async def test_manual_download_rejects_anything_but_the_space_list(tmp_path, content):
+    source = tmp_path / "espacos.json"
+    source.write_text(content, encoding="utf-8")
+    with pytest.raises(ValueError):
+        await snapshot_from_file(source, tmp_path / "snapshot")
+    assert not (tmp_path / "snapshot").exists()
+
+
+async def test_manual_download_never_overwrites_a_snapshot(tmp_path):
+    output = tmp_path / "snapshot"
+    output.mkdir()
+    (output / "keep.txt").write_text("keep")
+    with pytest.raises(FileExistsError):
+        await snapshot_from_file(downloaded(tmp_path, [record()]), output)
+    assert (output / "keep.txt").read_text() == "keep"

@@ -41,6 +41,31 @@ arquivo bruto deve coincidir com o manifesto e `latest.json`. Uma coleta parcial
 arquivo alterado, teste reprovado ou erro na importação interrompe o fluxo antes
 de iniciar a API. Não há fallback automático para uma captura anterior.
 
+### Quando a coleta é bloqueada (coleta pelo navegador)
+
+A instância do Mapas Culturais às vezes responde aos scripts com um desafio do
+Cloudflare (HTTP 403), e a coleta falha sem criar `latest.json`; então
+`--reuse-snapshot` também não tem o que importar. Nesse caso, abra no navegador o
+endereço abaixo, que traz todos os espaços de uma vez, e salve a resposta como
+um arquivo `.json`:
+
+```text
+https://saas.mapas.cultura.gov.br/api/space/find?@select=id,name,type,shortDescription,longDescription,location,public,endereco,En_CEP,En_Bairro,En_Municipio,telefonePublico,site,horario,preco,acessibilidade,acessibilidade_fisica,updateTimestamp,status&status=EQ(1)&En_Municipio=ILIKE(São Paulo)&@order=id ASC&@limit=5000
+```
+
+Depois, informe o arquivo no lugar da coleta pela rede:
+
+```bash
+bash setup_and_start.sh --from-file ~/Downloads/espacos.json --publish-imported
+```
+
+O arquivo vira um snapshot completo em `data/mapas_culturais/` (o manifesto
+registra `origin: manual_download` e o hash do arquivo original) e passa a ser o
+`latest.json`; nas próximas execuções, `--reuse-snapshot` reaproveita esse
+snapshot. Um arquivo que não seja a lista de espaços (por exemplo, a página do
+desafio salva por engano) é recusado sem alterar nada. Sem iniciar a API,
+`bash collect_mapas.sh --from-file ~/Downloads/espacos.json` só cria o snapshot.
+
 O wrapper usa o mesmo `.env` do backend e aceita as opções de coleta do
 `collect_mapas.sh`, como `--page-size 500 --max-pages 30 --timeout 60`.
 `--check` executa a preparação e a importação solicitada sem iniciar a API.

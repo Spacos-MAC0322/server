@@ -13,6 +13,7 @@ for argument in "$@"; do
 done
 if [[ " ${START_ARGS[*]} " == *" --help "* || " ${START_ARGS[*]} " == *" -h "* ]]; then
     printf 'Uso: bash setup_and_start.sh [--reuse-snapshot] [opcoes do start.sh]\n'
-    printf 'Por padrao coleta, importa e inicia a API. --reuse-snapshot evita nova coleta.\n\n'
+    printf 'Por padrao coleta, importa e inicia a API. --reuse-snapshot evita nova coleta.\n'
+    printf 'Se a coleta for bloqueada, --from-file ARQUIVO usa o JSON baixado pelo navegador.\n\n'
 fi
 exec bash "$SERVER_DIR/start.sh" "$DATA_MODE" "${START_ARGS[@]}"

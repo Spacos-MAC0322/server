@@ -4,9 +4,15 @@ set -Eeuo pipefail
 
 SERVER_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 OUTPUT=""
+FROM_FILE=""
 EXPORT_ARGS=()
 
 die() { printf '\nErro: %s\n' "$*" >&2; exit 1; }
+# Relative paths given by the user refer to the folder where the command ran.
+absolute_path() {
+    if [[ "$1" == /* || "$1" =~ ^[A-Za-z]: ]]; then printf '%s\n' "$1"
+    else printf '%s/%s\n' "$PWD" "$1"; fi
+}
 
 usage() {
     cat <<'HELP'
@@ -17,6 +23,8 @@ Atualiza data/mapas_culturais/latest.json somente se a coleta estiver completa.
 Preserva coletas anteriores e dados parciais; nao importa nem publica no banco.
 
 Opcoes:
+  --from-file ARQUIVO JSON baixado pelo navegador (lista de /api/space/find);
+                      substitui a coleta pela rede quando ela e bloqueada
   --output DIRETORIO  Destino novo ou vazio, relativo a server ou absoluto
   --base-url URL      Instancia (padrao: https://saas.mapas.cultura.gov.br)
   --page-size N       Registros por pagina, de 1 a 1000 (padrao: 500)
@@ -35,6 +43,12 @@ while [[ $# -gt 0 ]]; do
         --output)
             [[ $# -ge 2 && -n "$2" ]] || die '--output exige um diretorio.'
             OUTPUT="$2"
+            shift 2
+            ;;
+        --from-file)
+            [[ $# -ge 2 && -n "$2" ]] || die '--from-file exige um arquivo.'
+            FROM_FILE="$(absolute_path "$2")"
+            [[ -f "$FROM_FILE" ]] || die "Arquivo nao encontrado: $2"
             shift 2
             ;;
         --base-url|--page-size|--max-pages|--timeout)
@@ -94,9 +108,16 @@ if output.exists() and (not output.is_dir() or any(output.iterdir())):
     raise SystemExit("Escolha um destino novo ou vazio; snapshots existentes sao preservados.")
 PY
 
-printf '\nColetando um novo snapshot em %s\n' "$OUTPUT"
-if ! "$PYTHON_BIN" -m app.scripts.export_mapas_spaces --output "$OUTPUT" "${EXPORT_ARGS[@]}"; then
-    die "Coleta nao concluida. Verifique os arquivos e o manifest em $OUTPUT. O ultimo snapshot completo nao foi substituido."
+if [[ -n "$FROM_FILE" ]]; then
+    printf '\nCriando um snapshot em %s a partir de %s\n' "$OUTPUT" "$FROM_FILE"
+    "$PYTHON_BIN" -m app.scripts.export_mapas_spaces --output "$OUTPUT" \
+        --from-file "$FROM_FILE" "${EXPORT_ARGS[@]}" ||
+        die "Arquivo nao importado. O ultimo snapshot completo nao foi substituido."
+else
+    printf '\nColetando um novo snapshot em %s\n' "$OUTPUT"
+    if ! "$PYTHON_BIN" -m app.scripts.export_mapas_spaces --output "$OUTPUT" "${EXPORT_ARGS[@]}"; then
+        die "Coleta nao concluida. Verifique os arquivos e o manifest em $OUTPUT. O ultimo snapshot completo nao foi substituido."
+    fi
 fi
 
 "$PYTHON_BIN" - "$OUTPUT" <<'PY'
@@ -128,5 +149,4 @@ Path(temporary.name).replace(root / "latest.json")
 print(f"\nColeta completa: {manifest['unique_records']} registros unicos.")
 print(f"Snapshot: {output}")
 print(f"Referencia atualizada: {(root / 'latest.json').resolve()}")
-print("O banco nao foi alterado. Use app.jobs.sync_places para importar o arquivo bruto.")
 PY

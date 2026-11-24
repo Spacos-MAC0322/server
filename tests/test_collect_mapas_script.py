@@ -14,6 +14,7 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 
 from app.core.config import get_database_settings
+from app.scripts.import_mapas_snapshot import load_snapshot
 
 
 @pytest.fixture
@@ -165,10 +166,45 @@ def test_start_options_fail_before_preparing_or_changing_data(snapshot_command):
     for arguments in [
         ["--publish-imported"],
         ["--base-url", "https://example.com"],
+        ["--from-file", "espacos.json"],
     ]:
         result = run(*arguments, script_name="start.sh")
         assert result.returncode != 0
     assert not (server / "data").exists()
+
+
+def test_browser_download_becomes_latest_snapshot_without_network(
+    snapshot_command, tmp_path
+):
+    server, run = snapshot_command
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    museum = {
+        "id": 7,
+        "name": "Museu",
+        "status": 1,
+        "En_Municipio": "São Paulo",
+        "location": {"longitude": -46.63, "latitude": -23.55},
+    }
+    (downloads / "espacos.json").write_text(json.dumps([museum, museum]))
+
+    # The path is relative to where the command runs, not to the server folder.
+    result = run("--from-file", "downloads/espacos.json")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    latest = server / "data/mapas_culturais/latest.json"
+    raw, source_url = load_snapshot(latest)
+    assert source_url == "https://saas.mapas.cultura.gov.br"
+    assert [row["id"] for row in json.loads(raw.read_text(encoding="utf-8"))] == [7]
+    assert json.loads(latest.read_text(encoding="utf-8"))["unique_records"] == 1
+
+
+def test_missing_or_invalid_download_changes_nothing(snapshot_command, tmp_path):
+    server, run = snapshot_command
+    assert run("--from-file", "nao-existe.json").returncode != 0
+    (tmp_path / "desafio.json").write_text("<html>Just a moment...</html>")
+    assert run("--from-file", "desafio.json").returncode != 0
+    assert not (server / "data/mapas_culturais/latest.json").exists()
 
 
 @pytest.mark.integration
