@@ -4,23 +4,55 @@ set -Eeuo pipefail
 
 SERVER_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 CHECK_ONLY=0
+REFRESH_DATA=0
+SYNC_LATEST=0
+PUBLISH_IMPORTED=0
+COLLECT_ARGS=()
 API_PID=""
 MONGO_PID=""
 
 die() { printf '\nErro: %s\n' "$*" >&2; exit 1; }
 log() { printf '\n%s\n' "$*"; }
 
-case "${1:-}" in
-    "") ;;
-    --check) CHECK_ONLY=1 ;;
-    --help|-h)
-        printf 'Uso: bash start.sh [--check]\n'
-        printf 'MongoDB -> esquemas e indices -> testes completos -> API FastAPI.\n'
-        printf -- '--check executa a preparacao e os testes sem iniciar a API.\n'
-        exit 0 ;;
-    *) die "Opcao desconhecida: $1. Use --help." ;;
-esac
-[[ $# -le 1 ]] || die "Informe no maximo uma opcao. Use --help."
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --check) CHECK_ONLY=1; shift ;;
+        --refresh-data) REFRESH_DATA=1; SYNC_LATEST=1; shift ;;
+        --sync-latest) SYNC_LATEST=1; shift ;;
+        --publish-imported) PUBLISH_IMPORTED=1; shift ;;
+        --output|--base-url|--page-size|--max-pages|--timeout)
+            [[ $# -ge 2 && -n "$2" ]] || die "$1 exige um valor."
+            COLLECT_ARGS+=("$1" "$2")
+            shift 2
+            ;;
+        --help|-h)
+            cat <<'HELP'
+Uso: bash start.sh [opcoes]
+MongoDB -> esquemas e indices -> testes -> importacao opcional -> API FastAPI.
+
+  --check             Prepara e testa sem iniciar a API; importa se solicitado
+  --refresh-data      Faz nova coleta completa e importa o snapshot no banco
+  --sync-latest       Importa o ultimo snapshot completo, sem nova coleta
+  --publish-imported  Publica para teste somente os locais importados em review
+                      com localizacao valida; exige uma opcao de importacao
+  --output DIR        Destino novo ou vazio para --refresh-data
+  --base-url URL      Instancia usada na coleta
+  --page-size N       Registros por pagina (padrao: 500)
+  --max-pages N       Limite de paginas (padrao: 20)
+  --timeout SEGUNDOS  Tempo por requisicao (padrao: 30)
+HELP
+            exit 0 ;;
+        *) die "Opcao desconhecida: $1. Use --help." ;;
+    esac
+done
+if [[ "$PUBLISH_IMPORTED" == 1 && "$SYNC_LATEST" == 0 ]]; then
+    die '--publish-imported exige --refresh-data ou --sync-latest.'
+fi
+if [[ ${#COLLECT_ARGS[@]} -gt 0 && "$REFRESH_DATA" == 0 ]]; then
+    die 'As opcoes de coleta exigem --refresh-data.'
+fi
+TOTAL_STEPS=5
+if [[ "$SYNC_LATEST" == 1 ]]; then TOTAL_STEPS=6; fi
 
 cleanup() {
     local status=$?
@@ -43,7 +75,7 @@ trap 'exit 143' TERM
 
 cd "$SERVER_DIR"
 
-log '[1/5] Preparando o ambiente Python'
+log "[1/$TOTAL_STEPS] Preparando o ambiente Python"
 if [[ -n "${PYTHON:-}" ]]; then
     PYTHON_BIN="$PYTHON"
 elif [[ -x .venv/Scripts/python.exe ]]; then
@@ -129,7 +161,7 @@ raise SystemExit(asyncio.run(main()))
 PY
 }
 
-log '[2/5] Verificando e iniciando o MongoDB'
+log "[2/$TOTAL_STEPS] Verificando e iniciando o MongoDB"
 if ! mongo_ping 1 >/dev/null 2>&1; then
     [[ "$DEFAULT_LOCAL_MONGO" == 1 ]] ||
         die 'A instancia configurada em MONGO_URI nao esta acessivel. Verifique a conexao.'
@@ -154,10 +186,10 @@ if ! mongo_ping 1 >/dev/null 2>&1; then
     mongo_ping 30 || die 'O MongoDB nao ficou disponivel para inicializacao.'
 fi
 
-log '[3/5] Aplicando colecoes, validadores e indices'
+log "[3/$TOTAL_STEPS] Aplicando colecoes, validadores e indices"
 "$PYTHON_BIN" -m app.scripts.init_db
 
-log '[4/5] Executando testes unitarios e de integracao'
+log "[4/$TOTAL_STEPS] Executando testes unitarios e de integracao"
 "$PYTHON_BIN" - <<'PY'
 import os
 import subprocess
@@ -174,12 +206,25 @@ test_environment["MONGODB_TEST_URI"] = uri.get_secret_value()
 raise SystemExit(subprocess.call([sys.executable, "-m", "pytest"], env=test_environment))
 PY
 
+if [[ "$SYNC_LATEST" == 1 ]]; then
+    log "[5/$TOTAL_STEPS] Preparando os dados do Mapas Culturais"
+    if [[ "$REFRESH_DATA" == 1 ]]; then
+        # Share the prepared interpreter instead of creating a second environment.
+        PYTHON="$PYTHON_BIN" bash "$SERVER_DIR/collect_mapas.sh" "${COLLECT_ARGS[@]}"
+    fi
+    IMPORT_ARGS=()
+    if [[ "$PUBLISH_IMPORTED" == 1 ]]; then
+        IMPORT_ARGS+=(--publish-imported)
+    fi
+    "$PYTHON_BIN" -m app.scripts.import_mapas_snapshot "${IMPORT_ARGS[@]}"
+fi
+
 if [[ "$CHECK_ONLY" == 1 ]]; then
-    log 'Banco inicializado e testes aprovados. A API nao foi iniciada (--check).'
+    log 'Preparacao concluida e testes aprovados. A API nao foi iniciada (--check).'
     exit 0
 fi
 
-log "[5/5] Iniciando a API em http://$API_HOST:$API_PORT"
+log "[$TOTAL_STEPS/$TOTAL_STEPS] Iniciando a API em http://$API_HOST:$API_PORT"
 printf 'Documentacao: http://%s:%s/docs\n' "$API_HOST" "$API_PORT"
 printf 'Use Ctrl+C para encerrar a API.\n'
 "$PYTHON_BIN" -m uvicorn app.main:app --host "$API_HOST" --port "$API_PORT" &

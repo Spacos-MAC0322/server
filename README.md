@@ -17,6 +17,38 @@ faltando, verifica/inicia o MongoDB, aplica o modelo completo e executa os teste
 unitários e de integração. A API FastAPI só é iniciada se todas essas etapas
 passarem. A documentação fica em `http://127.0.0.1:8000/docs`.
 
+Para executar também a coleta e a importação, use:
+
+```bash
+bash setup_and_start.sh --publish-imported
+```
+
+Esse comando prepara o Python, verifica/inicia o MongoDB, aplica o schema e os
+índices, executa os testes, coleta um snapshot novo, importa seus dados e inicia
+a API. `--publish-imported` é opcional: publica para teste apenas os locais dessa
+importação que estejam em `review` e tenham localização válida. Altera somente
+`publication_status`; não atribui zona nem características de curadoria fictícias.
+Sem essa opção, os novos registros ficam em revisão.
+
+Para usar o snapshot que já está salvo, sem consultar novamente o Mapas Culturais:
+
+```bash
+bash setup_and_start.sh --reuse-snapshot --publish-imported
+```
+
+Antes da importação, o manifesto precisa indicar coleta completa e o hash do
+arquivo bruto deve coincidir com o manifesto e `latest.json`. Uma coleta parcial,
+arquivo alterado, teste reprovado ou erro na importação interrompe o fluxo antes
+de iniciar a API. Não há fallback automático para uma captura anterior.
+
+O wrapper usa o mesmo `.env` do backend e aceita as opções de coleta do
+`collect_mapas.sh`, como `--page-size 500 --max-pages 30 --timeout 60`.
+`--check` executa a preparação e a importação solicitada sem iniciar a API.
+As mesmas operações podem ser solicitadas diretamente com
+`bash start.sh --refresh-data --publish-imported` ou
+`bash start.sh --sync-latest --publish-imported`. `bash start.sh` sozinho
+continua iniciando o backend com os dados que já estão no banco.
+
 No Windows, o MongoDB precisa estar instalado como serviço `MongoDB`. Se estiver
 parado, o script tenta iniciá-lo; essa operação pode exigir abrir Git Bash como
 administrador. O serviço continua ativo quando a API é encerrada.
@@ -186,6 +218,33 @@ reexecutar permite retomar sem duplicar. Nada é removido por ausência na fonte
 O histórico distingue `running`, `success`, `partial` e `error`.
 
 ## Coleta local para testes offline
+
+Para atualizar o snapshot, execute na pasta `server` (Git Bash no Windows):
+
+```bash
+bash collect_mapas.sh
+```
+
+O script prepara o ambiente Python e usa o exportador existente para fazer uma
+nova coleta paginada. Cada execução cria uma pasta exclusiva
+`data/mapas_culturais/sp_<data-hora-UTC>_<id>/`, preservando os snapshots anteriores.
+Somente após uma coleta completa atualiza `data/mapas_culturais/latest.json`,
+com o caminho do arquivo bruto, manifesto, origem, data, contagem e hash.
+Uma falha ou coleta parcial termina com erro, preserva os dados já recebidos
+e mantém a referência ao último snapshot completo.
+
+É possível escolher um destino **novo ou vazio** e ajustar a paginação:
+
+```bash
+bash collect_mapas.sh --output data/mapas_culturais/minha_coleta --page-size 500 --max-pages 30 --timeout 60
+```
+
+Use `bash collect_mapas.sh --help` para ver as opções. Caminhos relativos de
+`--output` são resolvidos a partir de `server`, mesmo ao executar o script de outra
+pasta. A rotina consulta o Mapas Culturais e grava arquivos locais; não precisa
+do MongoDB, não inicia a aplicação e não importa nem publica espaços. A importação
+continua sendo feita explicitamente com `app.jobs.sync_places --input`, usando
+`raw_file` e `source_url` do `latest.json`. O `start.sh` mantém seu fluxo atual.
 
 O comando abaixo coleta a API para arquivos e não grava no MongoDB:
 
