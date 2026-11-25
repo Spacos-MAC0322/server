@@ -170,12 +170,17 @@ class ItineraryPlanner:
         return {**itinerary, **weather.model_dump()}
 
     async def get_itinerary(
-        self, itinerary_id: str, repository: ItineraryRepository
+        self, itinerary_id: str, user_id: str, repository: ItineraryRepository
     ) -> dict | None:
-        itinerary = await repository.find_by_id(itinerary_id)
+        """The user's itinerary with fresh conflicts and weather; None otherwise."""
+        itinerary = await repository.find_owned(itinerary_id, user_id)
         if itinerary is None:
             return None
         itinerary = await self.attach_opening_hours_conflicts(itinerary, repository)
+        return await self.present_itinerary(itinerary)
+
+    async def present_itinerary(self, itinerary: dict) -> dict:
+        """Response shape for a stored itinerary: weather attached, `_id` as id."""
         itinerary = await self.attach_weather_forecast(itinerary)
         itinerary["id"] = itinerary.pop("_id")
         return itinerary

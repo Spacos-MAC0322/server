@@ -16,6 +16,7 @@ import bcrypt
 import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from pymongo.errors import PyMongoError
 
 from ..repositories.user_repository import UserRepository, get_user_repository
 from .config import Settings, get_settings
@@ -117,7 +118,13 @@ async def _user_from_credentials(
     if user_id is None:
         return None
     # A token outlives a deleted account; the lookup makes it stop working.
-    return await repository.get_by_id(user_id)
+    try:
+        return await repository.get_by_id(user_id)
+    except PyMongoError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Não foi possível consultar o usuário no momento.",
+        ) from None
 
 
 async def get_current_user(

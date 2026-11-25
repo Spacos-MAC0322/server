@@ -1,12 +1,14 @@
 """Password hashing, JWT handling and the authentication dependencies."""
 
 from datetime import timedelta
+from unittest.mock import AsyncMock
 
 import jwt
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from pydantic import ValidationError
+from pymongo.errors import AutoReconnect
 
 from app.core import security
 from app.core.config import Settings
@@ -185,3 +187,21 @@ async def test_public_route_personalizes_only_with_a_valid_token(guarded, users)
     assert anonymous.json() == {"id": None}
     assert stale.json() == {"id": None}
     assert logged_in.json()["id"]
+
+
+@pytest.mark.parametrize("path", ["/private", "/public"])
+async def test_database_failure_during_user_lookup_returns_503(
+    guarded, users, monkeypatch, path
+):
+    headers = await bearer_for(users)
+    monkeypatch.setattr(
+        users, "get_by_id", AsyncMock(side_effect=AutoReconnect("secret details"))
+    )
+
+    response = await guarded.get(path, headers=headers)
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == (
+        "Não foi possível consultar o usuário no momento."
+    )
+    assert "secret" not in response.text
