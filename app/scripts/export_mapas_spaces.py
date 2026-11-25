@@ -80,6 +80,7 @@ async def export_spaces(
         "remote_count": None,
         "pages": [],
         "errors": [],
+        "error_details": [],
         "coverage_note": (
             "Public records declaring São Paulo in En_Municipio; "
             "not a census of all city venues."
@@ -111,6 +112,19 @@ async def export_spaces(
                 report["stop_reason"] = "end_of_results"
     except ExternalIntegrationError as error:
         report["errors"] = [type(error).__name__]
+        # Only adapter-controlled diagnostics: never upstream bodies or URLs.
+        report["error_details"] = [
+            {
+                key: value
+                for key, value in {
+                    "http_status": error.status_code,
+                    "reason": error.reason,
+                    "page": error.page,
+                    "attempts": error.attempts,
+                }.items()
+                if value is not None
+            }
+        ]
         report["stop_reason"] = "request_failed"
     unique = {str(row["id"]): row for row in rows}
     raw = list(unique.values())

@@ -31,6 +31,9 @@ from app.core.http_client import (
 
 logger = logging.getLogger(__name__)
 SERVICE = "mapas_culturais"
+SPACE_MAX_ATTEMPTS = 3
+SPACE_RETRY_DELAY_SECONDS = 0.5
+SPACE_RETRY_STATUSES = frozenset({408, 429, 500, 502, 503, 504})
 SPACE_FIELDS = (
     "id,name,type,shortDescription,longDescription,location,public,endereco,"
     "En_CEP,En_Bairro,En_Municipio,telefonePublico,site,horario,preco,"
@@ -259,40 +262,59 @@ class MapasCulturaisClient:
         ) as client:
             page = 1
             while True:
-                try:
-                    response = await client.get(
-                        f"{base}/api/space/find",
-                        params={
-                            "@select": SPACE_FIELDS,
-                            "@type": "json",
-                            "@limit": page_size,
-                            "@page": page,
-                            "@order": "id ASC",
-                            "status": "EQ(1)",
-                            # LIKE matches São Paulo / SÃO PAULO on the source DB.
-                            "En_Municipio": "ILIKE(São Paulo)",
-                        },
-                    )
-                    response.raise_for_status()
-                except httpx.TimeoutException:
-                    raise ExternalServiceTimeout(SERVICE) from None
-                except httpx.HTTPError:
-                    raise ExternalServiceUnavailable(SERVICE) from None
+                response, attempts = await _space_response(
+                    client,
+                    f"{base}/api/space/find",
+                    params={
+                        "@select": SPACE_FIELDS,
+                        "@type": "json",
+                        "@limit": page_size,
+                        "@page": page,
+                        "@order": "id ASC",
+                        "status": "EQ(1)",
+                        # LIKE matches São Paulo / SÃO PAULO on the source DB.
+                        "En_Municipio": "ILIKE(São Paulo)",
+                    },
+                )
                 try:
                     rows = response.json()
                 except ValueError:
-                    raise ExternalServiceInvalidResponse(SERVICE) from None
+                    raise ExternalServiceInvalidResponse(
+                        SERVICE,
+                        status_code=response.status_code,
+                        reason="invalid_json",
+                        page=page,
+                        attempts=attempts,
+                    ) from None
                 if not isinstance(rows, list) or any(
                     not isinstance(r, dict) for r in rows
                 ):
-                    raise ExternalServiceInvalidResponse(SERVICE)
+                    raise ExternalServiceInvalidResponse(
+                        SERVICE,
+                        status_code=response.status_code,
+                        reason="unexpected_payload",
+                        page=page,
+                        attempts=attempts,
+                    )
                 if not rows:
                     break
                 if any(not {"id", "name", "status"} <= r.keys() for r in rows):
-                    raise ExternalServiceInvalidResponse(SERVICE)
+                    raise ExternalServiceInvalidResponse(
+                        SERVICE,
+                        status_code=response.status_code,
+                        reason="missing_fields",
+                        page=page,
+                        attempts=attempts,
+                    )
                 ids = {str(r.get("id")) for r in rows}
                 if not ids - seen:
-                    raise ExternalServiceInvalidResponse(SERVICE)
+                    raise ExternalServiceInvalidResponse(
+                        SERVICE,
+                        status_code=response.status_code,
+                        reason="repeated_page",
+                        page=page,
+                        attempts=attempts,
+                    )
                 seen.update(ids)
                 try:
                     metadata = json.loads(response.headers.get("api-metadata", "{}"))
@@ -314,6 +336,50 @@ class MapasCulturaisClient:
                 if place:
                     spaces[place["_id"]] = place
         return list(spaces.values())
+
+
+async def _space_response(
+    client: httpx.AsyncClient, url: str, *, params: dict
+) -> tuple[httpx.Response, int]:
+    """Retry transient GET failures, recording no URLs, bodies or credentials."""
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            response = await client.get(url, params=params)
+            response.raise_for_status()
+            return response, attempt
+        except httpx.HTTPError as error:
+            status_code = None
+            failure = ExternalServiceUnavailable
+            if isinstance(error, httpx.HTTPStatusError):
+                status_code = error.response.status_code
+                challenge = error.response.headers.get("cf-mitigated") == "challenge"
+                reason = "http_challenge" if challenge else "http_status"
+                retryable = status_code in SPACE_RETRY_STATUSES and not challenge
+            elif isinstance(error, httpx.TimeoutException):
+                reason, retryable = "timeout", True
+                failure = ExternalServiceTimeout
+            elif isinstance(error, httpx.TransportError):
+                reason, retryable = "connection", True
+            else:
+                reason, retryable = "request_error", False
+            if not retryable or attempt >= SPACE_MAX_ATTEMPTS:
+                raise failure(
+                    SERVICE,
+                    status_code=status_code,
+                    reason=reason,
+                    page=params["@page"],
+                    attempts=attempt,
+                ) from None
+            logger.warning(
+                "Retrying Mapas spaces: page=%s attempt=%s status=%s reason=%s",
+                params["@page"],
+                attempt,
+                status_code,
+                reason,
+            )
+        await asyncio.sleep(SPACE_RETRY_DELAY_SECONDS * 2 ** (attempt - 1))
 
 
 async def fetch_spaces(**kwargs) -> list[dict]:
